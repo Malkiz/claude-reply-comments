@@ -1,6 +1,6 @@
 {
   "name": "reply-comments",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Comment inline on spans of Claude's last reply, then send all comments as one prompt (/annotate)",
   "author": { "name": "Malkiz" },
   "types": "./types/index.d.ts"

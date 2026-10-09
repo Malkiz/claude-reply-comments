@@ -18,23 +18,27 @@ export type ReplyCommentsDraft = {
   rev: number
 }
 
-/** One key pressed on the pane's legend, handed on to the reader. */
+/** One key typed in the pane's key field, handed on to the reader. */
 export type ReplyCommentsRelayed = {
   seq: number
   key: string
-  /** The comment text, for the `save` key the comment field sends. */
+  /** The text of a field, for the `submit` key. */
   text?: string
 }
 
 /** What the reader reports about itself, so the pane draws around it. */
 export type ReplyCommentsView = {
-  mode: 'normal' | 'visual' | 'comment'
-  /** Where a comment is being typed: the pane's field, or the reader itself. */
+  mode: 'normal' | 'visual' | 'vline' | 'input'
+  /** In input mode: a comment, a `/` search or a `:` command. */
+  inputKind?: 'comment' | 'search' | 'command'
+  /** Where the input is typed: the pane's field, or the reader itself. */
   via: 'pane' | 'reader'
-  /** What the comment is about. */
+  /** What a comment is about. */
   target: 'comment' | 'edit' | 'overall'
-  /** The text the comment field starts with. */
+  /** The text the field starts with. */
   draft: string
+  /** Keys typed toward a command not yet complete (`g`, `ci`, `3`). */
+  pending: string
 }
 
 declare module 'claude-code' {
@@ -43,6 +47,12 @@ declare module 'claude-code' {
       draft: ReplyCommentsDraft
       relay: ReplyCommentsRelayed[]
       view: ReplyCommentsView
+      /** Whether the key legend is shown. */
+      legend: boolean
+      /** What the key field holds as drawn: '' or a zero-width space, alternating so each draw clears it. */
+      keysDrawn: string
+      /** The zero-width mark the field (comment, search, command) starts with, new for each input. */
+      fieldMark: string
     }
   }
 }
