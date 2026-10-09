@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { textObject, wordBackward, wordEnd, wordEndBackward, wordForward } from '../hooks/lib'
-import { escape, initialState, step, submitInput } from '../hooks/vim'
+import { escape, initialState, scrollBy, step, submitInput } from '../hooks/vim'
 import type { Action, VimState } from '../hooks/vim'
 
 const LAYOUT = { columns: 40, rows: 5 }
@@ -250,6 +250,20 @@ describe('comments, search and commands', () => {
     expect(s.draft).toBe('hi')
     s = step(s, { key: 'return' }, 'reader', LAYOUT).state
     expect(s.comments[0]!.text).toBe('hi')
+  })
+
+  test('the wheel scrolls the text and keeps the cursor on screen', () => {
+    const long = Array.from({ length: 20 }, (_, i) => `row${i}`).join('\n')
+    const down = scrollBy(start(long), LAYOUT, 3)
+    expect(down.top).toBe(3)
+    expect(down.cursor).toBe(long.indexOf('row3'))
+    const back = scrollBy(down, LAYOUT, -1)
+    expect(back.top).toBe(2)
+    expect(back.cursor).toBe(long.indexOf('row3'))
+    expect(scrollBy(start(long), LAYOUT, 99).top).toBe(15)
+    expect(scrollBy(start(long), LAYOUT, -5).top).toBe(0)
+    const short = scrollBy(start('just one line'), LAYOUT, 2)
+    expect([short.top, short.cursor]).toEqual([0, 0])
   })
 
   test('ctrl-d and ctrl-u move half a screen, after a click', () => {

@@ -22,7 +22,7 @@ export type ReplyCommentsDraft = {
 export type ReplyCommentsRelayed = {
   seq: number
   key: string
-  /** The text of a field, for the `submit` key. */
+  /** The text of a field, for the `submit` key; the rows, for the `wheel` key. */
   text?: string
 }
 

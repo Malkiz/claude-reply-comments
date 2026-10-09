@@ -218,6 +218,14 @@ export const register: Register = on => {
     return { deny: 'Escape stays in the pane; q closes it' }
   })
 
+  // The wheel (or trackpad) over the pane scrolls the reply. The pane's own
+  // window never moves: the reader fills it exactly and scrolls its text itself.
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    if (e.origin.kind !== 'person') return next(e)
+    if (e.by !== 0) await relayKeys($, [{ key: 'wheel', text: String(e.by) }])
+    return {}
+  })
+
   on('ui.message', { requestId: PANE }, async ($, e) => {
     const post = asPost(e.data)
     if (!post) return {}

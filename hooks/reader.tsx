@@ -3,7 +3,7 @@ import type { ClientModule, ClientPointerEvent, ClientSurface } from 'claude-cod
 import type { ReplyComment, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
 import { commentAt, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
 import type { Line } from './lib'
-import { escape, initialState, scrolled, selection, step, submitInput, viewOf } from './vim'
+import { escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
 import type { Action, Layout, StepResult, VimState } from './vim'
 
 /** What the hooks module hands the reader. */
@@ -88,6 +88,8 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
           ? apply(s, submitInput(s, r.text ?? '', layout))
           : r.key === 'escape'
             ? { state: { ...s, ...escape(s) } }
+            : r.key === 'wheel'
+              ? { state: { ...s, ...scrollBy(s, layout, Number(r.text) || 0) } }
             : apply(s, step(s, { key: r.key }, 'pane', layout))
       s = { ...result.state, relaySeq: r.seq }
       action = result.action ?? action

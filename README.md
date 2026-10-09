@@ -20,7 +20,7 @@ Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the
 
 Esc never takes you out of the pane: it leaves visual mode, a field or a half-typed command, and does nothing in normal mode. `q` closes the pane.
 
-With the mouse, drag over text to select it and start a comment. Clicking the reply also hands it the keyboard directly, which adds the ctrl keys. In that case the comment is typed in place and `ctrl-c` cancels it.
+With the mouse, the wheel scrolls the reply, and dragging over text selects it and starts a comment. Clicking the reply also hands it the keyboard directly, which adds the ctrl keys. In that case the comment is typed in place and `ctrl-c` cancels it.
 
 The prompt quotes each selected span, with its comment under it, in reply order.
 

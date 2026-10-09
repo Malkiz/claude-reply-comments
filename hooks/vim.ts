@@ -109,7 +109,8 @@ export function scrolled(s: VimState, layout: Layout, lines: readonly Line[] = l
   return top === s.top ? s : { ...s, top }
 }
 
-function scrollBy(s: VimState, layout: Layout, rows: number): VimState {
+/** Moves the window `rows` down (negative: up), the cursor kept on screen, as vim's `ctrl-e` / `ctrl-y`. */
+export function scrollBy(s: VimState, layout: Layout, rows: number): VimState {
   const lines = linesOf(s, layout)
   const maxTop = Math.max(0, lines.length - layout.rows)
   const top = Math.max(0, Math.min(maxTop, s.top + rows))
