@@ -187,3 +187,105 @@ export function buildPrompt(comments: readonly ReplyComment[], overall: string):
 
   return parts.join('\n\n')
 }
+
+/** One key of the legend: what to press, what it does, and a shorter word for tight panes. */
+export type LegendKey = { key: string; label: string; short: string }
+
+/**
+ * Every key the pane takes, grouped as the legend draws them. Hotkeys are one
+ * lowercase letter or digit, so the keymap stays within those.
+ */
+export const LEGEND: readonly { group: string; keys: readonly LegendKey[] }[] = [
+  {
+    group: 'Move',
+    keys: [
+      { key: 'j', label: 'down', short: '↓' },
+      { key: 'k', label: 'up', short: '↑' },
+      { key: 'h', label: 'left', short: '←' },
+      { key: 'l', label: 'right', short: '→' },
+      { key: 'w', label: 'next word', short: 'word→' },
+      { key: 'b', label: 'prev word', short: '←word' },
+      { key: 'n', label: 'next ¶', short: '¶↓' },
+      { key: 'p', label: 'prev ¶', short: '¶↑' },
+      { key: 'd', label: 'page down', short: 'pg↓' },
+      { key: 'u', label: 'page up', short: 'pg↑' },
+      { key: 'g', label: 'top', short: 'top' },
+      { key: 'e', label: 'end', short: 'end' },
+    ],
+  },
+  {
+    group: 'Select',
+    keys: [
+      { key: 'v', label: 'start/stop', short: 'select' },
+      { key: 'a', label: 'paragraph', short: '¶' },
+    ],
+  },
+  {
+    group: 'Comment',
+    keys: [
+      { key: 'c', label: 'comment', short: 'comment' },
+      { key: 'o', label: 'overall', short: 'overall' },
+      { key: 'r', label: 'revise', short: 'revise' },
+      { key: 'x', label: 'delete', short: 'delete' },
+      { key: 'm', label: 'next comment', short: 'next' },
+    ],
+  },
+  {
+    group: 'Finish',
+    keys: [
+      { key: 's', label: 'send', short: 'send' },
+      { key: 'f', label: 'to prompt', short: 'to prompt' },
+      { key: 'z', label: 'clear all', short: 'clear' },
+      { key: 'q', label: 'close', short: 'close' },
+    ],
+  },
+]
+
+/** The keys the pane handles itself rather than handing to the reader. */
+export const PANE_KEYS = new Set(['s', 'f', 'z', 'q'])
+
+/** The width of the group-name column in the full legend, its gap included. */
+export const GROUP_COLUMN = 9
+
+/** One row of the legend: group names and keys, in drawing order. */
+export type LegendRow = ({ group: string } | { key: LegendKey })[]
+
+const cellsOf = (item: LegendRow[number], compact: boolean) =>
+  'group' in item
+    ? compact
+      ? item.group.length + 2
+      : GROUP_COLUMN
+    : item.key.key.length + 2 + (compact ? item.key.short : item.key.label).length + 2
+
+/**
+ * Lays the legend out in rows of at most `width` cells. Full: one group per
+ * row (wrapping under its name), full labels. Compact: short labels, the
+ * groups flowing on from one another, for a pane with little room.
+ */
+export function legendRows(width: number, compact = false): LegendRow[] {
+  const w = Math.max(20, width)
+  const rows: LegendRow[] = []
+  let row: LegendRow = []
+  let used = 0
+  const put = (item: LegendRow[number]) => {
+    const cells = cellsOf(item, compact)
+    if (row.length > 0 && used + cells > w) {
+      rows.push(row)
+      row = compact ? [] : [{ group: '' }]
+      used = compact ? 0 : GROUP_COLUMN
+    }
+    row.push(item)
+    used += cells
+  }
+  for (const { group, keys } of LEGEND) {
+    if (!compact && row.length > 0) {
+      rows.push(row)
+      row = []
+      used = 0
+    }
+    put({ group })
+    for (const key of keys) put({ key })
+  }
+  if (row.length > 0) rows.push(row)
+  return rows
+}

@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, SessionMessage } from 'claude-code'
 
-import { buildPrompt, lastReply, paragraphAt, selectionRange, wrap } from '../hooks/lib'
+import { GROUP_COLUMN, LEGEND, buildPrompt, lastReply, legendRows, paragraphAt, selectionRange, wrap } from '../hooks/lib'
 
 const REPLY = [
   'First paragraph about the plan.',
@@ -31,20 +31,28 @@ const ANNOTATE = {
 const PANE_PROPS = {
   title: 'Annotate reply',
   isFocused: true,
-  bodyColumns: 40,
+  bodyColumns: 60,
   placement: 'inline' as const,
-  scroll: { offset: 0, bodyRows: 12 },
+  scroll: { offset: 0, bodyRows: 20 },
   view: {},
 }
 
-type Sent = { submitted: string[]; filled: string[]; opened: number; closed: number; toasts: string[] }
+type Sent = {
+  submitted: string[]
+  filled: string[]
+  opens: { focus?: boolean }[]
+  closed: number
+  toasts: string[]
+  focused: string[]
+  clock: MockClock
+}
 
-/** Answers the engine nouns the mod reaches beneath it, and records prompts. */
+/** Answers the engine nouns the mod reaches beneath it, and records what it did. */
 function engine(on: On, messages: SessionMessage[] = MESSAGES): Sent {
-  const sent: Sent = { submitted: [], filled: [], opened: 0, closed: 0, toasts: [] }
+  const sent: Sent = { submitted: [], filled: [], opens: [], closed: 0, toasts: [], focused: [], clock: mock.clock(on) }
   on('session.messages', () => ({ value: messages }))
-  on('ui.open', () => {
-    sent.opened++
+  on('ui.open', (_$, e) => {
+    sent.opens.push({ focus: (e as { focus?: true }).focus === true })
     return { value: { isPlaced: true as const } }
   })
   on('ui.close', () => {
@@ -54,6 +62,12 @@ function engine(on: On, messages: SessionMessage[] = MESSAGES): Sent {
   on('ui.toast', (_$, e) => {
     sent.toasts.push(String((e as { text?: unknown }).text))
     return { value: undefined }
+  })
+  on('ui.focus', (_$, e) => {
+    const w = e as { key?: string; element?: string }
+    const target = w.key ?? w.element
+    if (target) sent.focused.push(target)
+    return {}
   })
   on('prompt.submit', (_$, e) => {
     sent.submitted.push(e.text)
@@ -74,14 +88,22 @@ async function openPane($: Engine, surface: 'terminal' | 'desktop' = 'terminal')
     component: 'Pane',
     requestId: 'reply-comments',
     props: PANE_PROPS as never,
-    viewport: { columns: 40, rows: 40 },
+    viewport: { columns: 60, rows: 40 },
   })
   await ui.resize({ columns: 40, rows: 11, in: 'reader' })
   return { ran, ui }
 }
 
-async function type(ui: { key: (e: { key: string; in?: string }) => Promise<void> }, text: string) {
+type Keys = { key: (e: { key: string; ctrl?: true; in?: string }) => Promise<void> }
+
+/** Keys pressed with the reader holding the keyboard (after a click). */
+async function type(ui: Keys, text: string) {
   for (const ch of text) await ui.key({ key: ch === ' ' ? 'space' : ch, in: 'reader' })
+}
+
+/** Keys pressed on the pane's legend, as its hotkeys do. */
+async function legend(ui: { press: (t: { key: string }) => Promise<unknown> }, keys: string) {
+  for (const k of keys) await ui.press({ key: `key-${k}` })
 }
 
 describe('lib', () => {
@@ -132,6 +154,33 @@ describe('lib', () => {
     )
     expect(buildPrompt([], 'just this')).toBe('just this')
   })
+
+  test('the legend uses distinct hotkeys a Button takes, and its rows fit', () => {
+    const keys = LEGEND.flatMap(g => g.keys.map(k => k.key))
+    expect(new Set(keys).size).toBe(keys.length)
+    for (const k of keys) expect(k).toMatch(/^[a-z0-9]$/)
+    for (const compact of [false, true]) {
+      for (const width of [40, 60, 100]) {
+        const rows = legendRows(width, compact)
+        const placed = rows.flat().flatMap(item => ('key' in item ? [item.key.key] : []))
+        expect(placed).toEqual(keys)
+        for (const row of rows) {
+          const cells = row.reduce(
+            (n, item) =>
+              n +
+              ('group' in item
+                ? compact
+                  ? item.group.length + 2
+                  : GROUP_COLUMN
+                : item.key.key.length + 2 + (compact ? item.key.short : item.key.label).length + 2),
+            0,
+          )
+          expect(row.length <= 2 || cells <= width).toBe(true)
+        }
+      }
+    }
+    expect(legendRows(100, true).length).toBeLessThan(legendRows(100).length)
+  })
 })
 
 describe('annotate', () => {
@@ -141,26 +190,127 @@ describe('annotate', () => {
     expect(ran.text).toContain('no reply')
   })
 
-  test('keyboard: select with v, comment, send one prompt', async ($, on) => {
+  test('opens the pane, then asks for the keyboard once the command is done', async ($, on) => {
     const sent = engine(on)
-    const { ran, ui } = await openPane($)
-    expect(ran.text).toContain('Click the reply')
-    expect(await ui.find({ in: 'reader', text: 'NORMAL' })).toBeDefined()
+    const ran = await $.command.run(ANNOTATE)
+    expect(ran.text).toContain('keys are listed at the bottom')
+    expect(sent.opens).toEqual([{ focus: false }])
+    await sent.clock.advance(300)
+    expect(sent.opens).toEqual([{ focus: false }, { focus: true }])
+  })
 
-    // select "First" (cursor on F, v, 4 x l), then comment it
-    await type(ui, 'vllll')
+  test('the legend lists every key at the bottom of the pane', async ($, on) => {
+    engine(on)
+    const { ui } = await openPane($)
+    for (const { keys } of LEGEND) {
+      for (const k of keys) expect((await ui.find({ key: `key-${k.key}` }))?.text).toBe(k.label)
+    }
+    expect(await ui.find({ type: 'Text', text: 'Move' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Finish' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a short pane gets the compact legend, still every key', async ($, on) => {
+    engine(on)
+    await $.command.run(ANNOTATE)
+    const ui = await $.ui.mount({
+      plugin: 'reply-comments',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'reply-comments',
+      props: { ...PANE_PROPS, bodyColumns: 98, scroll: { offset: 0, bodyRows: 10 } } as never,
+    })
+    for (const { keys } of LEGEND) {
+      for (const k of keys) expect((await ui.find({ key: `key-${k.key}` }))?.text).toBe(k.short)
+    }
+    await ui.unmount()
+  })
+
+  test('keyboard only: legend keys move, select, comment in the field, send', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+
+    await legend(ui, 'j')
+    expect(await ui.find({ in: 'reader', text: 'line 2/' })).toBeDefined()
+    await legend(ui, 'g')
+
+    // select "First" with v and four steps right, then comment
+    await legend(ui, 'vllll')
     expect(await ui.find({ in: 'reader', text: 'VISUAL' })).toBeDefined()
-    await ui.key({ key: 'c', in: 'reader' })
-    expect(await ui.find({ in: 'reader', text: 'COMMENT' })).toBeDefined()
-    await type(ui, 'too vague')
-    await ui.key({ key: 'return', in: 'reader' })
+    await legend(ui, 'c')
+    expect(await ui.find({ key: 'comment' })).toBeDefined()
+    expect(await ui.find({ key: 'key-j' })).toBeUndefined()
 
+    await ui.input({ key: 'comment', text: 'too vague' })
+    expect(await ui.find({ key: 'comment' })).toBeUndefined()
     expect(await ui.find({ in: 'reader', text: '1 comment' })).toBeDefined()
-    expect((await ui.find({ key: 'send' }))?.text).toBe('Send 1')
 
-    await ui.key({ key: 's', in: 'reader' })
+    await legend(ui, 's')
     expect(sent.submitted).toEqual(['I left a comment on part of your last reply:\n\n1. On this part:\n> First\n\ntoo vague'])
     expect(sent.closed).toBe(1)
+    await ui.unmount()
+  })
+
+  test('keyboard only: paragraph select, overall comment, revise, delete, to prompt', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+
+    await legend(ui, 'nac')
+    await ui.input({ key: 'comment', text: 'split this' })
+
+    await legend(ui, 'o')
+    expect((await ui.find({ key: 'comment' }))?.text).toBe('')
+    await ui.input({ key: 'comment', text: 'nice overall' })
+    expect(await ui.find({ in: 'reader', text: '1 comment + overall' })).toBeDefined()
+
+    await legend(ui, 'gr')
+    expect(await ui.find({ in: 'reader', text: 'No comment under the cursor' })).toBeDefined()
+    await legend(ui, 'm')
+    expect(await ui.find({ in: 'reader', text: 'split this' })).toBeDefined()
+    await legend(ui, 'r')
+    expect((await ui.find({ key: 'comment' }))?.text).toBe('split this')
+    await ui.input({ key: 'comment', text: 'split in two' })
+
+    // a comment on "Third." with c on its paragraph, then removed again
+    await legend(ui, 'ec')
+    await ui.input({ key: 'comment', text: 'drop me' })
+    expect(await ui.find({ in: 'reader', text: '2 comments' })).toBeDefined()
+    await legend(ui, 'x')
+    expect(await ui.find({ in: 'reader', text: '1 comment + overall' })).toBeDefined()
+
+    await legend(ui, 'f')
+    expect(sent.filled).toHaveLength(1)
+    expect(sent.filled[0]).toContain('> Second paragraph that is quite')
+    expect(sent.filled[0]).toContain('split in two')
+    expect(sent.filled[0]).toContain('Overall: nice overall')
+    expect(sent.submitted).toHaveLength(0)
+    await ui.unmount()
+  })
+
+  test('an empty comment from the field cancels', async ($, on) => {
+    engine(on)
+    const { ui } = await openPane($)
+    await legend(ui, 'c')
+    await ui.input({ key: 'comment', text: '' })
+    expect(await ui.find({ in: 'reader', text: 'Empty comment discarded' })).toBeDefined()
+    expect(await ui.find({ in: 'reader', text: '0 comments' })).toBeDefined()
+    expect(await ui.find({ key: 'key-j' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('with the reader clicked: v, c, type in place, s sends', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+
+    await type(ui, 'vllllc')
+    expect(await ui.find({ in: 'reader', text: 'comment>' })).toBeDefined()
+    expect(await ui.find({ key: 'comment' })).toBeUndefined()
+    await type(ui, 'too vague')
+    await ui.key({ key: 'return', in: 'reader' })
+    expect(await ui.find({ in: 'reader', text: '1 comment' })).toBeDefined()
+
+    await type(ui, 's')
+    expect(sent.submitted).toEqual(['I left a comment on part of your last reply:\n\n1. On this part:\n> First\n\ntoo vague'])
     await ui.unmount()
   })
 
@@ -176,7 +326,7 @@ describe('annotate', () => {
     await type(ui, 'rename')
     await ui.key({ key: 'return', in: 'reader' })
 
-    await ui.press({ key: 'send' })
+    await legend(ui, 's')
     expect(sent.submitted[0]).toContain('> paragraph\n\nrename')
     await ui.unmount()
   })
@@ -190,62 +340,28 @@ describe('annotate', () => {
     await ui.unmount()
   })
 
-  test('paragraph comment, overall comment, edit and delete, then fill the prompt box', async ($, on) => {
-    const sent = engine(on)
-    const { ui } = await openPane($)
-
-    await type(ui, '}p')
-    await type(ui, 'split this')
-    await ui.key({ key: 'return', in: 'reader' })
-
-    await type(ui, 'o')
-    await type(ui, 'nice overall')
-    await ui.key({ key: 'return', in: 'reader' })
-    expect(await ui.find({ in: 'reader', text: '1 comment + overall' })).toBeDefined()
-
-    // back on the commented paragraph: edit it
-    await type(ui, 'ge')
-    expect(await ui.find({ in: 'reader', text: 'No comment under the cursor' })).toBeDefined()
-    await type(ui, '}e')
-    await ui.key({ key: 'backspace', in: 'reader' })
-    await type(ui, 'S')
-    await ui.key({ key: 'return', in: 'reader' })
-
-    // a comment on "Third." then removed again
-    await type(ui, 'Gp')
-    await type(ui, 'drop me')
-    await ui.key({ key: 'return', in: 'reader' })
-    expect(await ui.find({ in: 'reader', text: '2 comments' })).toBeDefined()
-    await type(ui, 'x')
-    expect(await ui.find({ in: 'reader', text: '1 comment + overall' })).toBeDefined()
-
-    await type(ui, 'f')
-    expect(sent.filled).toHaveLength(1)
-    expect(sent.filled[0]).toContain('> Second paragraph that is quite')
-    expect(sent.filled[0]).toContain('split thiS')
-    expect(sent.filled[0]).toContain('Overall: nice overall')
-    expect(sent.submitted).toHaveLength(0)
-    await ui.unmount()
-  })
-
   test('backspace on an empty draft cancels; nothing to send stays put', async ($, on) => {
     const sent = engine(on)
     const { ui } = await openPane($)
-    await type(ui, 'p')
+    await type(ui, 'c')
     await ui.key({ key: 'backspace', in: 'reader' })
     expect(await ui.find({ in: 'reader', text: 'Comment cancelled' })).toBeDefined()
     await type(ui, 's')
     expect(await ui.find({ in: 'reader', text: 'Nothing to send yet' })).toBeDefined()
+    await legend(ui, 's')
+    expect(sent.toasts.join()).toContain('nothing to send')
     expect(sent.submitted).toHaveLength(0)
+    expect(sent.closed).toBe(0)
     await ui.unmount()
   })
 
   test('unsent comments survive closing and reopening the pane', async ($, on) => {
-    engine(on)
+    const sent = engine(on)
     const first = await openPane($)
-    await type(first.ui, 'p')
-    await type(first.ui, 'keep me')
-    await first.ui.key({ key: 'return', in: 'reader' })
+    await legend(first.ui, 'c')
+    await first.ui.input({ key: 'comment', text: 'keep me' })
+    await legend(first.ui, 'q')
+    expect(sent.closed).toBe(1)
     await first.ui.unmount()
 
     const again = await openPane($)
@@ -254,20 +370,38 @@ describe('annotate', () => {
     await again.ui.unmount()
   })
 
-  test('help opens with ? and closes on any key', async ($, on) => {
+  test('z clears every comment, and the reader follows', async ($, on) => {
     engine(on)
     const { ui } = await openPane($)
-    await type(ui, '?')
-    expect(await ui.find({ in: 'reader', text: /Finish/ })).toBeDefined()
-    await type(ui, 'j')
-    expect(await ui.find({ in: 'reader', text: 'NORMAL' })).toBeDefined()
+    await legend(ui, 'c')
+    await ui.input({ key: 'comment', text: 'one' })
+    expect(await ui.find({ in: 'reader', text: '1 comment' })).toBeDefined()
+    await legend(ui, 'z')
+    expect(await ui.find({ in: 'reader', text: '0 comments' })).toBeDefined()
     await ui.unmount()
   })
 
-  test('the desktop draws the same reader', async ($, on) => {
+  test('a long reply scrolls with the cursor', async ($, on) => {
+    const long = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join('\n')
+    engine(on, [
+      { role: 'user', text: 'go', toolUses: [] },
+      { role: 'assistant', text: long, toolUses: [] },
+    ])
+    const { ui } = await openPane($)
+    expect(await ui.find({ in: 'reader', text: 'line 1/60 ↓' })).toBeDefined()
+    expect(await ui.find({ in: 'reader', text: 'line 30' })).toBeUndefined()
+    await legend(ui, 'e')
+    expect(await ui.find({ in: 'reader', text: 'line 60/60' })).toBeDefined()
+    await legend(ui, 'u')
+    expect(await ui.find({ in: 'reader', text: 'line 51/60' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('the desktop draws the same reader and legend', async ($, on) => {
     engine(on)
     const { ui } = await openPane($, 'desktop')
     expect(await ui.find({ in: 'reader', text: 'NORMAL' })).toBeDefined()
+    expect(await ui.find({ key: 'key-s' })).toBeDefined()
     await ui.unmount()
   })
 
@@ -282,61 +416,6 @@ describe('annotate', () => {
       props: PANE_PROPS as never,
     })
     expect(await ui.find({ type: 'Markdown', text: /Third/ })).toBeDefined()
-    await ui.unmount()
-  })
-})
-
-describe('pane', () => {
-  test('Clear drops every comment, and the reader follows', async ($, on) => {
-    engine(on)
-    const { ui } = await openPane($)
-    await type(ui, 'p')
-    await type(ui, 'one')
-    await ui.key({ key: 'return', in: 'reader' })
-    expect((await ui.find({ key: 'send' }))?.text).toBe('Send 1')
-
-    await ui.press({ key: 'clear' })
-    expect((await ui.find({ key: 'send' }))?.text).toBe('Send')
-    expect(await ui.find({ in: 'reader', text: '0 comments' })).toBeDefined()
-    await ui.unmount()
-  })
-
-  test('Send with nothing written toasts and keeps the pane', async ($, on) => {
-    const sent = engine(on)
-    const { ui } = await openPane($)
-    await ui.press({ key: 'send' })
-    expect(sent.submitted).toHaveLength(0)
-    expect(sent.closed).toBe(0)
-    expect(sent.toasts.join()).toContain('nothing to send')
-    await ui.unmount()
-  })
-
-  test('q closes the pane and keeps the draft', async ($, on) => {
-    const sent = engine(on)
-    const { ui } = await openPane($)
-    await type(ui, 'p')
-    await type(ui, 'later')
-    await ui.key({ key: 'return', in: 'reader' })
-    await type(ui, 'q')
-    expect(sent.closed).toBe(1)
-    expect(sent.submitted).toHaveLength(0)
-    await ui.unmount()
-  })
-
-  test('a long reply scrolls with the cursor', async ($, on) => {
-    const long = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join('\n')
-    engine(on, [
-      { role: 'user', text: 'go', toolUses: [] },
-      { role: 'assistant', text: long, toolUses: [] },
-    ])
-    const { ui } = await openPane($)
-    expect(await ui.find({ in: 'reader', text: 'line 1/60 ↓' })).toBeDefined()
-    expect(await ui.find({ in: 'reader', text: 'line 30' })).toBeUndefined()
-    await type(ui, 'G')
-    expect(await ui.find({ in: 'reader', text: 'line 60' })).toBeDefined()
-    expect(await ui.find({ in: 'reader', text: 'line 60/60' })).toBeDefined()
-    await ui.key({ key: 'u', ctrl: true, in: 'reader' })
-    expect(await ui.find({ in: 'reader', text: 'line 56/60' })).toBeDefined()
     await ui.unmount()
   })
 })
