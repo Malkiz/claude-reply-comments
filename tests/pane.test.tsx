@@ -193,7 +193,13 @@ describe('annotate', () => {
     expect(await ui.find({ type: 'Text', text: /gg G/ })).toBeDefined()
     await keys(ui, '?')
     expect(await ui.find({ type: 'Text', text: /^Move/ })).toBeUndefined()
+    await keys(ui, '?')
     await ui.unmount()
+
+    // shown when the pane closed, hidden again when it reopens
+    const again = await openPane($)
+    expect(await again.ui.find({ type: 'Text', text: /^Move/ })).toBeUndefined()
+    await again.ui.unmount()
   })
 
   test('the reader always fills the pane exactly, legend or not', async ($, on) => {

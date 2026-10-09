@@ -128,9 +128,7 @@ async function fill($: $) {
 }
 
 async function toggleLegend($: $) {
-  const shown = !(await read($, legend))
-  await update($, legend, () => shown)
-  await $.store.set('legend', shown)
+  await update($, legend, shown => !shown)
 }
 
 /** Hands keys to the reader, which applies each relayed key once. */
@@ -173,7 +171,6 @@ export const register: Register = on => {
       name: COMMAND,
       description: "Comment on parts of Claude's last reply, then send the comments as one prompt",
     })
-    if ((await $.store.get('legend')) === true) await update($, legend, () => true)
 
     return next(e)
   })
@@ -189,6 +186,7 @@ export const register: Register = on => {
       d.reply === reply ? { ...d, rev: d.rev + 1 } : { reply, comments: [], overall: '', rev: d.rev + 1 },
     )
     await update($, view, () => NORMAL)
+    await update($, legend, () => false)
 
     await $.ui.open(PANE_OPTIONS)
     refocus($, FOCUS_DELAY_MS)

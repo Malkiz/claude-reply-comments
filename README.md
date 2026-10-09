@@ -6,7 +6,7 @@ Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the
 
 ## Use
 
-`/annotate` opens a pane with Claude's last reply and gives it the keyboard. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane; it is hidden by default and the choice is remembered.
+`/annotate` opens a pane with Claude's last reply and gives it the keyboard. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
 
 | Group | Keys |
 | --- | --- |
