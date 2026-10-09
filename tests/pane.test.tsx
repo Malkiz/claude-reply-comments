@@ -101,9 +101,20 @@ async function keys(ui: Ui, typed: string) {
   }
 }
 
+/** The pane's field (comment, search or command), whichever of its keys is drawn now. */
+async function findField(ui: Ui) {
+  for (const key of ['field0', 'field1', 'field2', 'field3']) {
+    const found = await ui.find({ key })
+    if (found) return { key, text: found.text ?? '' }
+  }
+  return undefined
+}
+
 /** Fills the pane's field (comment, search or command) and presses Enter. */
 async function field(ui: Ui, text: string) {
-  await ui.input({ key: 'field', text })
+  const found = await findField(ui)
+  if (!found) throw new Error('no field drawn')
+  await ui.input({ key: found.key, text })
 }
 
 const fieldText = (found: { text?: string } | undefined) => found?.text?.replace(/[\u200b\u200c\u200d\u2060]/g, '')
@@ -229,7 +240,7 @@ describe('annotate', () => {
     await keys(ui, 'vip')
     expect(await status(ui, 'VISUAL')).toBeDefined()
     await keys(ui, 'c')
-    expect(await ui.find({ key: 'field' })).toBeDefined()
+    expect(await findField(ui)).toBeDefined()
     expect(await ui.find({ key: 'keys' })).toBeUndefined()
     await field(ui, 'too vague')
     expect(await ui.find({ key: 'keys' })).toBeDefined()
@@ -247,10 +258,10 @@ describe('annotate', () => {
     const sent = engine(on)
     const { ui } = await openPane($)
     await keys(ui, 'wciw')
-    expect(fieldText(await ui.find({ key: 'field' }))).toBe('')
+    expect(fieldText(await findField(ui))).toBe('')
     await field(ui, 'which one?')
     await keys(ui, ':')
-    expect(await ui.find({ key: 'field' })).toBeDefined()
+    expect(await findField(ui)).toBeDefined()
     await field(ui, 'p')
     expect(sent.filled).toEqual(['I left a comment on part of your last reply:\n\n1. On this part:\n> paragraph\n\nwhich one?'])
     await ui.unmount()
@@ -260,18 +271,35 @@ describe('annotate', () => {
     const sent = engine(on)
     const { ui } = await openPane($)
     await keys(ui, 'ciw')
-    const first = (await ui.find({ key: 'field' }))?.text ?? ''
-    await ui.input({ key: 'field', text: `${first}half typed`, kind: 'change' })
+    const first = (await findField(ui))!
+    await ui.input({ key: first.key, text: `${first.text}half typed`, kind: 'change' })
     // ctrl+c on the reader runs the same escape as Esc does through the pane
     await ui.key({ key: 'c', ctrl: true, in: 'reader' })
     expect(await status(ui, 'Cancelled')).toBeDefined()
     await keys(ui, 'ciw')
-    const second = (await ui.find({ key: 'field' }))?.text ?? ''
-    expect(second).not.toBe(first)
-    expect(fieldText({ text: second })).toBe('')
-    await field(ui, `${second}kept`)
+    const second = (await findField(ui))!
+    expect(second.key).not.toBe(first.key)
+    expect(fieldText(second)).toBe('')
+    await field(ui, `${second.text}kept`)
     await keys(ui, 's')
     expect(sent.submitted[0]).toContain('\n\nkept')
+    await ui.unmount()
+  })
+
+  test('Esc while revising keeps the comment as it was', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+    await keys(ui, 'ciw')
+    await field(ui, 'original')
+    await keys(ui, 'r')
+    const revising = (await findField(ui))!
+    expect(fieldText(revising)).toBe('original')
+    await ui.input({ key: revising.key, text: `${revising.text} CHANGED`, kind: 'change' })
+    await ui.key({ key: 'c', ctrl: true, in: 'reader' })
+    expect(await status(ui, 'Cancelled')).toBeDefined()
+    await keys(ui, 's')
+    expect(sent.submitted[0]).toContain('\n\noriginal')
+    expect(sent.submitted[0]).not.toContain('CHANGED')
     await ui.unmount()
   })
 
@@ -291,7 +319,7 @@ describe('annotate', () => {
     const { ui } = await openPane($)
     await keys(ui, 'v$')
     await ui.input({ key: 'keys', text: (await ui.find({ key: 'keys' }))?.text ?? '' })
-    expect(await ui.find({ key: 'field' })).toBeDefined()
+    expect(await findField(ui)).toBeDefined()
     await ui.unmount()
   })
 

@@ -33,6 +33,9 @@ const legend = atom({ plugin: 'reply-comments', key: 'legend' } as const, false)
 const keysDrawn = atom({ plugin: 'reply-comments', key: 'keysDrawn' } as const, MARKS[0]!)
 const fieldMark = atom({ plugin: 'reply-comments', key: 'fieldMark' } as const, MARKS[0]!)
 
+/** The field's key: one per mark, so each input gets a field of its own. */
+export const fieldKey = (mark: string) => `field${MARKS.indexOf(mark)}`
+
 const unmarked = (text: string) => text.replace(/[\u200b\u200c\u200d\u2060]/g, '')
 
 type $ = EngineInterface
@@ -227,9 +230,11 @@ export const register: Register = on => {
     if (!same(was, post.view)) {
       await update($, view, () => post.view)
       if (isTypingInPane(post.view) && !isTypingInPane(was)) {
-        // A new mark makes the field drop whatever an earlier, cancelled input left in it.
-        await update($, fieldMark, cur => MARKS[(MARKS.indexOf(cur) + 1) % MARKS.length]!)
-        void $.ui.focus({ requestId: PANE, key: 'field' }).catch(() => undefined)
+        // A new mark draws a new field: nothing an earlier, cancelled input
+        // left in it, and its cursor at the end of the text it starts with.
+        const mark = MARKS[(MARKS.indexOf(await read($, fieldMark)) + 1) % MARKS.length]!
+        await update($, fieldMark, () => mark)
+        void $.ui.focus({ requestId: PANE, key: fieldKey(mark) }).catch(() => undefined)
       } else if (!isTypingInPane(post.view) && isTypingInPane(was)) {
         void $.ui.focus({ requestId: PANE, key: 'keys' }).catch(() => undefined)
       }
@@ -279,14 +284,18 @@ export const register: Register = on => {
           ))}
           <Box height={1} overflow="hidden">
             {isTypingInPane(v) ? (
-              <Input
-                key="field"
-                label={FIELD_LABEL[fieldKind]}
-                value={mark + v.draft}
-                submitLabel={v.inputKind === 'comment' ? 'save' : 'go'}
-                autoFocus
-                onSubmit={text => relayKeys($, [{ key: 'submit', text: unmarked(text) }])}
-              />
+              // One level deeper than the key field, so the surface draws it as a
+              // field of its own: a reused one keeps the key field's cursor position.
+              <Box flexGrow={1}>
+                <Input
+                  key={fieldKey(mark)}
+                  label={FIELD_LABEL[fieldKind]}
+                  value={v.draft}
+                  submitLabel={v.inputKind === 'comment' ? 'save' : 'go'}
+                  autoFocus
+                  onSubmit={text => relayKeys($, [{ key: 'submit', text: unmarked(text) }])}
+                />
+              </Box>
             ) : (
               <Input
                 key="keys"
