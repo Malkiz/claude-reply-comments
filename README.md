@@ -1,12 +1,12 @@
 # claude-reply-comments
 
-A Claude Code mod for commenting inline on parts of Claude's last reply, the way a PR review or Notion comments work. All the comments then go back to Claude as one prompt.
+A Claude Code mod for commenting inline on any part of the conversation, the way a PR review or Notion comments work. All the comments then go back to Claude as one prompt.
 
 Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the terminal (tmux on macOS), and it also draws in the desktop Code tab.
 
 ## Use
 
-`/annotate` opens a pane with Claude's last reply and gives it the keyboard. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
+`/annotate` opens a pane with the whole conversation and gives it the keyboard. The pane draws the conversation the way the transcript does: `❯` on your prompts, `⏺` on Claude's replies and tool calls (`Bash(ls)` with its first result line), markdown rendered. It opens at the bottom with the cursor on Claude's last reply, and you can move anywhere above it. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
 
 | Group | Keys |
 | --- | --- |
@@ -20,9 +20,13 @@ Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the
 
 Esc never takes you out of the pane: it leaves visual mode, a field or a half-typed command, and does nothing in normal mode. `q` closes the pane.
 
-With the mouse, the wheel scrolls the reply, and dragging over text selects it and starts a comment. Clicking the reply also hands it the keyboard directly, which adds the ctrl keys. In that case the comment is typed in place and `ctrl-c` cancels it.
+With the mouse, the wheel scrolls the conversation, and dragging over text selects it and starts a comment. Clicking the conversation also hands it the keyboard directly, which adds the ctrl keys. In that case the comment is typed in place and `ctrl-c` cancels it.
 
-The prompt quotes each selected span, with its comment under it, in reply order.
+The prompt quotes each selected span, with its comment under it, in conversation order. When every comment is on Claude's last reply it says so once; otherwise each comment names the message it is on (your message, Claude's reply to a given prompt, a tool call).
+
+Unsent comments are kept when you close the pane, and still there when you reopen it after the conversation has grown.
+
+The pane opens docked beside the transcript. Its width is the one Claude Code keeps for every pane: drag the divider to make it as wide as you like (the transcript keeps at least 24 columns).
 
 ## Install
 
@@ -42,9 +46,9 @@ claude plugin test .
 ```
 
 - `hooks/register.tsx`: the `/annotate` command, the pane, its key field, field and legend, Esc, sending and filling the prompt.
-- `hooks/reader.tsx`: the `Client` surface module that draws the reply and handles mouse and keys.
+- `hooks/reader.tsx`: the `Client` surface module that draws the conversation (gutter, markdown styles, cursor, comments) and handles mouse and keys.
 - `hooks/vim.ts`: the vim engine: motions, operators, modes.
-- `hooks/lib.ts`: wrapping, word/paragraph/text-object primitives, prompt building and the legend.
+- `hooks/lib.ts`: the conversation as one text (`conversation`, `renderMarkdown`), wrapping, word/paragraph/text-object primitives, prompt building and the legend.
 - `types/index.d.ts`: the `$.state` contract.
 
 `tsconfig.json` extends `.claude-plugin/types/tsconfig.json`, which Claude Code writes when it loads the mod. That folder is gitignored.

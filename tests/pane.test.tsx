@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, SessionMessage } from 'claude-code'
 
-import { LEGEND, buildPrompt, lastReply, legendLines, selectionRange, wrap } from '../hooks/lib'
+import { LEGEND, buildPrompt, conversation, legendLines, renderMarkdown, selectionRange, wrap } from '../hooks/lib'
 
 const REPLY = [
   'First paragraph about the plan.',
@@ -122,18 +122,56 @@ const fieldText = (found: { text?: string } | undefined) => found?.text?.replace
 const status = async (ui: Ui, text: string | RegExp) => ui.find({ in: 'reader', text })
 
 describe('lib', () => {
-  test('lastReply joins the turn and stops at the prompt', () => {
-    expect(lastReply(MESSAGES)).toBe(REPLY)
-    expect(lastReply([{ role: 'user', text: 'hi' }])).toBe('')
-    expect(
-      lastReply([
-        { role: 'user', text: 'q', toolUses: [] },
-        { role: 'assistant', text: 'part one', toolUses: [] },
-        { role: 'user', text: '', toolUses: [], toolResults: [{} as never] },
-        { role: 'assistant', text: 'part two', toolUses: [] },
-        { role: 'user', text: '<command-name>/annotate</command-name>', toolUses: [] },
-      ]),
-    ).toBe('part one\n\npart two')
+  test('conversation lays out every prompt, reply and tool call, a blank line apart', () => {
+    const convo = conversation(MESSAGES)
+    expect(convo.text).toBe(`old prompt\n\nold answer\n\nexplain the plan\n\n${REPLY}`)
+    expect(convo.parts.map(p => p.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
+    const last = convo.parts[3]!
+    expect(convo.text.slice(last.start, last.end)).toBe(REPLY)
+
+    const tools = conversation([
+      { role: 'user', text: 'q <system-reminder>hidden</system-reminder>', toolUses: [] },
+      {
+        role: 'assistant',
+        text: 'part one',
+        toolUses: [{ tool: 'Bash', input: { command: 'ls -la' }, text: '\nfile.txt\nmore' }],
+      },
+      { role: 'user', text: '', toolUses: [], toolResults: [{} as never] },
+      { role: 'assistant', text: 'part two', toolUses: [] },
+      { role: 'user', text: '<command-name>/annotate</command-name>', toolUses: [] },
+    ])
+    expect(tools.text).toBe('q\n\npart one\n\nBash(ls -la)\n⎿  file.txt\n\npart two')
+    expect(tools.parts.map(p => p.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(conversation([{ role: 'user', text: 'hi', toolUses: [] }]).parts.some(p => p.role === 'assistant')).toBe(false)
+  })
+
+  test('markdown is drawn without its markers, the styles kept beside the text', () => {
+    const r = renderMarkdown('## Plan\nUse **bold** and `code`.\n```ts\nconst x = 1\n```\nend')
+    expect(r.text).toBe('Plan\nUse bold and code.\nconst x = 1\nend')
+    const styled = (style: string) => r.marks.filter(m => m.style === style).map(m => r.text.slice(m.start, m.end))
+    expect(styled('heading')).toEqual(['Plan'])
+    expect(styled('bold')).toEqual(['bold'])
+    expect(styled('code')).toEqual(['code', 'const x = 1'])
+  })
+
+  test('buildPrompt names the message a comment is on once any is outside the last reply', () => {
+    const convo = conversation(MESSAGES)
+    const at = (s: string) => convo.text.indexOf(s)
+    const text = buildPrompt(
+      [
+        { start: at('Third'), end: at('Third') + 5, quote: 'Third', text: 'last' },
+        { start: at('old answer'), end: at('old answer') + 10, quote: 'old answer', text: 'earlier' },
+        { start: at('old prompt'), end: at('old prompt') + 10, quote: 'old prompt', text: 'mine' },
+      ],
+      '',
+      convo,
+    )
+    expect(text).toBe(
+      'I left 3 comments on parts of our conversation:\n\n' +
+        '1. On this part of my message "old prompt":\n> old prompt\n\nmine\n\n' +
+        '2. On this part of your reply to "old prompt":\n> old answer\n\nearlier\n\n' +
+        '3. On this part of your last reply:\n> Third\n\nlast',
+    )
   })
 
   test('wrap keeps rows within the width and covers every character', () => {
@@ -230,12 +268,11 @@ describe('annotate', () => {
     const sent = engine(on)
     const { ui } = await openPane($)
 
+    // the cursor opens on the last reply, below the earlier messages
+    expect(await status(ui, '· 7/')).toBeDefined()
     await keys(ui, 'j')
-    expect(await status(ui, '· 2/')).toBeDefined()
-    await keys(ui, 'G')
-    expect(await status(ui, /· (\d+)\/\1/)).toBeDefined()
-    await keys(ui, 'gg')
-    expect(await status(ui, '· 1/')).toBeDefined()
+    expect(await status(ui, '· 8/')).toBeDefined()
+    await keys(ui, 'k')
 
     await keys(ui, 'vip')
     expect(await status(ui, 'VISUAL')).toBeDefined()
@@ -245,6 +282,11 @@ describe('annotate', () => {
     await field(ui, 'too vague')
     expect(await ui.find({ key: 'keys' })).toBeDefined()
     expect(await status(ui, '1 comment')).toBeDefined()
+
+    await keys(ui, 'G')
+    expect(await status(ui, /· (\d+)\/\1/)).toBeDefined()
+    await keys(ui, 'gg')
+    expect(await status(ui, '· 1/')).toBeDefined()
 
     await keys(ui, 's')
     expect(sent.submitted).toEqual([
@@ -308,9 +350,9 @@ describe('annotate', () => {
     const { ui } = await openPane($)
     await keys(ui, '/')
     await field(ui, 'paragraph')
-    expect(await status(ui, '· 1/')).toBeDefined()
+    expect(await status(ui, '· 7/')).toBeDefined()
     await keys(ui, 'n')
-    expect(await status(ui, '· 3/')).toBeDefined()
+    expect(await status(ui, '· 9/')).toBeDefined()
     await ui.unmount()
   })
 
@@ -329,7 +371,7 @@ describe('annotate', () => {
     const drawn = (await ui.find({ key: 'keys' }))?.text ?? ''
     await ui.input({ key: 'keys', text: `${drawn}j`, kind: 'change' })
     await ui.input({ key: 'keys', text: `${drawn}jj`, kind: 'change' })
-    expect(await status(ui, '· 3/')).toBeDefined()
+    expect(await status(ui, '· 9/')).toBeDefined()
     await ui.unmount()
   })
 
@@ -345,11 +387,15 @@ describe('annotate', () => {
   })
 
   test('mouse: drag across a span opens a comment on it', async ($, on) => {
-    const sent = engine(on)
+    // short enough to fit: the prompt on row 0, the reply from row 2, text past the gutter
+    const sent = engine(on, [
+      { role: 'user', text: 'q', toolUses: [] },
+      { role: 'assistant', text: REPLY, toolUses: [] },
+    ])
     const { ui } = await openPane($)
-    await ui.pointer({ type: 'down', x: 6, y: 0, button: 'left', in: 'reader' })
-    await ui.pointer({ type: 'move', x: 10, y: 0, button: 'left', in: 'reader' })
-    await ui.pointer({ type: 'up', x: 14, y: 0, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'down', x: 8, y: 2, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'move', x: 12, y: 2, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'up', x: 16, y: 2, button: 'left', in: 'reader' })
     expect(await status(ui, 'COMMENT')).toBeDefined()
     for (const key of ['o', 'k']) await ui.key({ key, in: 'reader' })
     await ui.key({ key: 'return', in: 'reader' })
@@ -374,6 +420,19 @@ describe('annotate', () => {
     await field(again.ui, 'clear')
     expect(await status(again.ui, '0 comments')).toBeDefined()
     await again.ui.unmount()
+  })
+
+  test('a comment on an earlier message says which message it is on', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+    await keys(ui, 'ggvip')
+    await keys(ui, 'c')
+    await field(ui, 'about my ask')
+    await keys(ui, 's')
+    expect(sent.submitted).toEqual([
+      'I left a comment on part of our conversation:\n\n1. On this part of my message "old prompt":\n> old prompt\n\nabout my ask',
+    ])
+    await ui.unmount()
   })
 
   test('nothing to send stays put', async ($, on) => {

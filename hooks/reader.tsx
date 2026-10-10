@@ -1,14 +1,17 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface } from 'claude-code'
 
-import type { ReplyComment, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
-import { commentAt, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
+import type { ReplyComment, ReplyCommentsMark, ReplyCommentsPart, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
+import { commentAt, lastReplyPart, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
 import type { Line } from './lib'
 import { escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
 import type { Action, Layout, StepResult, VimState } from './vim'
 
 /** What the hooks module hands the reader. */
 export type ReaderProps = {
+  /** The conversation as one text. */
   reply: string
+  parts: ReplyCommentsPart[]
+  marks: ReplyCommentsMark[]
   comments: ReplyComment[]
   overall: string
   rev: number
@@ -28,6 +31,8 @@ type ReaderState = VimState & { relaySeq: number; isDragging: boolean }
 
 /** The status row under the text. */
 const FOOTER_ROWS = 1
+/** The `❯` / `⏺` column left of the text, as the transcript draws it. */
+const GUTTER = 2
 
 // The instance's live state: handlers read it so keys pressed faster than a
 // frame build on each other instead of on the last drawn state.
@@ -38,13 +43,26 @@ let layout: Layout = { columns: 80, rows: 10 }
 const newestSeq = (relay: readonly ReplyCommentsRelayed[] | undefined) =>
   (relay ?? []).reduce((n, r) => Math.max(n, r.seq), 0)
 
-function fresh(props: ReaderProps, prev: ReaderState | undefined, isSameInstance: boolean): ReaderState {
+/**
+ * Where a new annotation opens: the cursor on Claude's last reply, the window
+ * at the bottom of the conversation as the transcript sits, or at the reply's
+ * start when the reply is taller than the window.
+ */
+function opening(props: ReaderProps, at: Layout): { cursor: number; top: number } {
+  const cursor = lastReplyPart(props.parts ?? [])?.start ?? 0
+  const lines = wrap(props.reply, at.columns)
+  const row = lineOf(lines, cursor)
+  return { cursor, top: Math.max(0, Math.min(row - 1, lines.length - at.rows)) }
+}
+
+function fresh(props: ReaderProps, prev: ReaderState | undefined, isSameInstance: boolean, at: Layout): ReaderState {
   const base = initialState(props.reply, props.comments, props.overall, props.rev)
   const keep = prev !== undefined && prev.reply === props.reply
+  const open = keep ? undefined : opening(props, at)
   return {
     ...base,
-    cursor: keep ? Math.min(prev.cursor, Math.max(0, props.reply.length - 1)) : 0,
-    top: keep ? prev.top : 0,
+    cursor: open ? open.cursor : Math.min(prev!.cursor, Math.max(0, props.reply.length - 1)),
+    top: open ? open.top : prev!.top,
     search: keep ? prev.search : '',
     relaySeq: Math.max(isSameInstance ? (prev?.relaySeq ?? 0) : 0, newestSeq(props.relay)),
     isDragging: false,
@@ -60,14 +78,14 @@ const apply = (s: ReaderState, r: StepResult): { state: ReaderState; action?: Ac
 const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
   // The surface object is the instance: the same one comes back on every call.
   const isSameInstance = surface === liveSurface
-  if (!isSameInstance || live === undefined || live.rev !== props.rev) {
-    live = fresh(props, isSameInstance ? live : surface.state, isSameInstance)
-    liveSurface = surface
-  }
-
-  const columns = surface.columns > 0 ? surface.columns : 80
+  const columns = Math.max(10, (surface.columns > 0 ? surface.columns : 80) - GUTTER)
   const rows = Math.max(1, (surface.rows > 0 ? surface.rows : 12) - FOOTER_ROWS)
   layout = { columns, rows }
+
+  if (!isSameInstance || live === undefined || live.rev !== props.rev) {
+    live = fresh(props, isSameInstance ? live : surface.state, isSameInstance, layout)
+    liveSurface = surface
+  }
 
   const commit = (next: ReaderState, action?: Action) => {
     live = next
@@ -108,7 +126,7 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
     if (next !== live) commit(next)
   })
 
-  return draw(surface, live, columns, rows)
+  return draw(surface, live, props, columns, rows)
 }
 
 export default Reader
@@ -121,7 +139,7 @@ export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderStat
 
   const lines = wrap(s.reply, layout.columns)
   const rowAt = (y: number) => s.top + Math.max(-1, Math.min(layout.rows, y))
-  const at = (y: number, x: number) => offsetAt(lines, rowAt(y), x)
+  const at = (y: number, x: number) => offsetAt(lines, rowAt(y), Math.max(0, x - GUTTER))
 
   if (event.type === 'down') {
     if (event.y >= layout.rows) return s
@@ -144,7 +162,7 @@ export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderStat
 
 // ---------- drawing ----------
 
-type Style = 'plain' | 'cursor' | 'selected' | 'commented' | 'match'
+type Style = 'plain' | 'cursor' | 'selected' | 'commented' | 'match' | ReplyCommentsMark['style']
 
 function styleProps(style: Style) {
   switch (style) {
@@ -156,6 +174,13 @@ function styleProps(style: Style) {
       return { color: 'yellow', underline: true }
     case 'match':
       return { color: 'cyan', underline: true }
+    case 'bold':
+    case 'heading':
+      return { bold: true }
+    case 'code':
+      return { color: 'blue' }
+    case 'dim':
+      return { dimColor: true }
     default:
       return {}
   }
@@ -163,7 +188,7 @@ function styleProps(style: Style) {
 
 const printable = (t: string) => t.replace(/[\u0000-\u001f\u007f]/g, ' ')
 
-function draw(surface: ClientSurface<ReaderState>, s: ReaderState, columns: number, rows: number) {
+function draw(surface: ClientSurface<ReaderState>, s: ReaderState, props: ReaderProps, columns: number, rows: number) {
   const { Box, Text } = surface.elements
 
   if (!s.reply) {
@@ -183,20 +208,34 @@ function draw(surface: ClientSurface<ReaderState>, s: ReaderState, columns: numb
   const to = visible[visible.length - 1]?.end ?? 0
   const matchLen = s.search.length
   const matches = searchMatches(s.reply, s.search).filter(at => at + matchLen > from && at < to)
+  const marks = (props.marks ?? []).filter(m => m.end > from && m.start < to)
+  const parts = props.parts ?? []
 
   const styleAt = (offset: number): Style => {
     if (showCursor && offset === s.cursor) return 'cursor'
     if (sel && offset >= sel.start && offset < sel.end) return 'selected'
     if (commentAt(s.comments, offset) >= 0) return 'commented'
     if (matches.some(at => offset >= at && offset < at + matchLen)) return 'match'
-    return 'plain'
+    let mark: Style = 'plain'
+    for (const m of marks) if (offset >= m.start && offset < m.end) mark = m.style
+    return mark
+  }
+
+  // The transcript's gutter: `❯` on a prompt, `⏺` on a reply block or a tool call.
+  const gutter = (line: Line) => {
+    const part = parts.find(p => p.start === line.start)
+    if (!part) return <Text>{'  '}</Text>
+    if (part.role === 'user') return <Text dimColor>{'❯ '}</Text>
+    if (part.role === 'tool') return <Text color={part.isError ? 'red' : 'green'}>{'⏺ '}</Text>
+    return <Text>{'⏺ '}</Text>
   }
 
   // Every row is exactly one cell tall, so nothing below it ever moves.
   const textRows = visible.map(line => {
     if (line.end === line.start) {
       return (
-        <Box height={1} overflow="hidden">
+        <Box flexDirection="row" height={1} overflow="hidden">
+          {gutter(line)}
           <Text {...styleProps(showCursor && s.cursor === line.start ? 'cursor' : 'plain')}> </Text>
         </Box>
       )
@@ -210,6 +249,7 @@ function draw(surface: ClientSurface<ReaderState>, s: ReaderState, columns: numb
     }
     return (
       <Box flexDirection="row" height={1} overflow="hidden">
+        {gutter(line)}
         {segments.map(seg => (
           <Text {...styleProps(seg.style)} wrap="truncate-end">
             {printable(seg.text)}

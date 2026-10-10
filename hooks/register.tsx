@@ -2,12 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { ReplyComment, ReplyCommentsDraft, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
-import { GROUP_COLUMN, buildPrompt, lastReply, legendLines } from './lib'
+import { GROUP_COLUMN, buildPrompt, conversation, lastReplyPart, legendLines } from './lib'
 import type { ReaderPost } from './reader'
 
 const PANE = 'reply-comments'
 const COMMAND = 'annotate'
-const PANE_OPTIONS = { id: PANE, title: 'Annotate reply', holdToasts: true, closeOnEscape: true, rows: 30 } as const
+const PANE_OPTIONS = { id: PANE, title: 'Annotate conversation', holdToasts: true, closeOnEscape: true, rows: 30, columns: 160 } as const
 
 // The pane can only take the keyboard once the command that opened it has
 // finished, so it asks again shortly after.
@@ -18,7 +18,7 @@ const REFOCUS_DELAY_MS = 80
 // after it lost it (the redraw and the close race), came from inside the pane.
 const ESCAPE_WINDOW_MS = 500
 
-const EMPTY: ReplyCommentsDraft = { reply: '', comments: [], overall: '', rev: 0 }
+const EMPTY: ReplyCommentsDraft = { reply: '', parts: [], marks: [], comments: [], overall: '', rev: 0 }
 const NORMAL: ReplyCommentsView = { mode: 'normal', via: 'reader', target: 'comment', draft: '', pending: '' }
 
 // The key field is redrawn with one of these after every keystroke, so it
@@ -107,7 +107,7 @@ async function send($: $) {
     $.ui.toast('reply-comments: nothing to send yet')
     return
   }
-  const text = buildPrompt(d.comments, d.overall)
+  const text = buildPrompt(d.comments, d.overall, { text: d.reply, parts: d.parts, marks: d.marks })
   await closePane($)
   await clearDraft($)
   void $.prompt.submit({ text, asUser: true }).catch(() => {
@@ -121,7 +121,7 @@ async function fill($: $) {
     $.ui.toast('reply-comments: nothing to put in the prompt yet')
     return
   }
-  const filled = await $.prompt.fill({ text: buildPrompt(d.comments, d.overall) })
+  const filled = await $.prompt.fill({ text: buildPrompt(d.comments, d.overall, { text: d.reply, parts: d.parts, marks: d.marks }) })
   if (!filled.isFilled) {
     $.ui.toast('reply-comments: the prompt box did not take the text; your comments are kept')
     return
@@ -172,7 +172,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: "Comment on parts of Claude's last reply, then send the comments as one prompt",
+      description: 'Comment on parts of the conversation, then send the comments to Claude as one prompt',
     })
 
     return next(e)
@@ -180,14 +180,22 @@ export const register: Register = on => {
 
   on('command.run', { command: COMMAND }, async $ => {
     const messages = await $.session.messages()
-    const reply = Array.isArray(messages) ? lastReply(messages) : ''
-    if (!reply) return { text: 'There is no reply to annotate yet.' }
+    const convo = conversation(Array.isArray(messages) ? messages : [])
+    if (!lastReplyPart(convo.parts)) return { text: 'There is no reply to annotate yet.' }
 
+    // Unsent comments carry over while the conversation has only grown since:
+    // what they point at is still where it was.
     const before = await read($, draft)
-    const isResumed = before.reply === reply && (before.comments.length > 0 || before.overall.trim() !== '')
-    await update($, draft, d =>
-      d.reply === reply ? { ...d, rev: d.rev + 1 } : { reply, comments: [], overall: '', rev: d.rev + 1 },
-    )
+    const isKept = before.reply !== '' && convo.text.startsWith(before.reply)
+    const isResumed = isKept && (before.comments.length > 0 || before.overall.trim() !== '')
+    await update($, draft, d => ({
+      reply: convo.text,
+      parts: convo.parts,
+      marks: convo.marks,
+      comments: isKept ? d.comments : [],
+      overall: isKept ? d.overall : '',
+      rev: d.rev + 1,
+    }))
     await update($, view, () => NORMAL)
     await update($, legend, () => false)
 
@@ -278,7 +286,7 @@ export const register: Register = on => {
           <Client
             key="reader"
             module="./reader.tsx"
-            props={{ reply: d.reply, comments: d.comments, overall: d.overall, rev: d.rev, relay: keys }}
+            props={{ reply: d.reply, parts: d.parts, marks: d.marks, comments: d.comments, overall: d.overall, rev: d.rev, relay: keys }}
             width="100%"
             height={readerRows}
           />

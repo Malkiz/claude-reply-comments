@@ -1,5 +1,5 @@
 export type ReplyComment = {
-  /** Offset of the first selected character in the reply text. */
+  /** Offset of the first selected character in the conversation text. */
   start: number
   /** Offset just past the last selected character. */
   end: number
@@ -9,9 +9,29 @@ export type ReplyComment = {
   text: string
 }
 
+/** One message of the conversation, where it sits in the annotated text. */
+export type ReplyCommentsPart = {
+  /** The person's prompt, a block of Claude's reply text, or one tool call. */
+  role: 'user' | 'assistant' | 'tool'
+  start: number
+  end: number
+  /** A tool call that ended in an error. */
+  isError?: true
+}
+
+/** A styled span of the annotated text: markdown drawn, a tool name, a result line. */
+export type ReplyCommentsMark = {
+  start: number
+  end: number
+  style: 'bold' | 'heading' | 'code' | 'dim'
+}
+
 export type ReplyCommentsDraft = {
-  /** The reply being annotated. */
+  /** The conversation being annotated, as one text. */
   reply: string
+  /** Where each message sits in `reply`. */
+  parts: ReplyCommentsPart[]
+  marks: ReplyCommentsMark[]
   comments: ReplyComment[]
   overall: string
   /** Bumped whenever the hooks module replaces the draft, so the reader resets. */

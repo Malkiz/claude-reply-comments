@@ -1,4 +1,4 @@
-import type { ReplyComment } from '../types'
+import type { ReplyComment, ReplyCommentsMark, ReplyCommentsPart } from '../types'
 
 /** One display row of the reply: the text offsets [start, end) it shows. */
 export type Line = { start: number; end: number }
@@ -10,33 +10,130 @@ export type Range = { start: number; end: number }
 type MessageLike = {
   role: 'user' | 'assistant'
   text: string
-  toolUses?: readonly unknown[]
+  toolUses?: readonly ToolUseLike[]
   toolResults?: readonly unknown[]
 }
 
-/**
- * The text of Claude's last reply: the newest assistant text, joined with the
- * assistant texts before it in the same turn (tool calls and their results in
- * between), stopping at the person's prompt.
- */
-export function lastReply(messages: readonly MessageLike[]): string {
-  let i = messages.length - 1
-  while (i >= 0 && !(messages[i]!.role === 'assistant' && messages[i]!.text.trim())) i--
-  if (i < 0) return ''
+/** A tool call as `$.session.messages()` summarises it, the fields read here. */
+type ToolUseLike = { tool: string; input?: Record<string, unknown>; text?: string; isError?: true }
 
-  const parts: string[] = []
-  for (; i >= 0; i--) {
-    const m = messages[i]!
-    if (m.role === 'assistant') {
-      if (m.text.trim()) parts.unshift(m.text.trim())
+/** The conversation as one text, where each message sits in it, and how its spans are styled. */
+export type Conversation = { text: string; parts: ReplyCommentsPart[]; marks: ReplyCommentsMark[] }
+
+/** What the engine adds to a message that the person never wrote. */
+const clean = (text: string) => text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
+
+/** A slash command's own record (`<command-name>…`): not a message to annotate. */
+const isCommandRecord = (text: string) => /^<(command-|local-command-)/.test(text)
+
+type Block = { role: ReplyCommentsPart['role']; text: string; marks: ReplyCommentsMark[]; isError?: boolean }
+
+/** Inline markdown on one line: `**bold**` and `` `code` `` drawn without their markers. */
+function inline(line: string, at: number, marks: ReplyCommentsMark[]): string {
+  let out = ''
+  const re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g
+  let last = 0
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    out += line.slice(last, m.index)
+    const inner = m[1] ?? m[2]!
+    marks.push({ start: at + out.length, end: at + out.length + inner.length, style: m[1] ? 'bold' : 'code' })
+    out += inner
+    last = m.index + m[0].length
+  }
+  return out + line.slice(last)
+}
+
+/**
+ * Markdown drawn as the transcript draws it, near enough: headings bold, code
+ * fences gone with their code tinted, bold and inline code without markers.
+ * Offsets in `marks` are into the returned text.
+ */
+export function renderMarkdown(source: string): { text: string; marks: ReplyCommentsMark[] } {
+  const marks: ReplyCommentsMark[] = []
+  const lines: string[] = []
+  let length = 0
+  let isCode = false
+  const push = (line: string) => {
+    lines.push(line)
+    length += line.length + 1
+  }
+  for (const raw of source.split('\n')) {
+    if (/^\s*```/.test(raw)) {
+      isCode = !isCode
       continue
     }
-    const isToolResultOnly = (m.toolResults?.length ?? 0) > 0 && !m.text.trim()
-    if (!isToolResultOnly && m.text.trim()) break
+    if (isCode) {
+      marks.push({ start: length, end: length + raw.length, style: 'code' })
+      push(raw)
+      continue
+    }
+    const heading = /^#{1,6}\s+(.*)$/.exec(raw)
+    if (heading) {
+      const text = inline(heading[1]!, length, marks)
+      marks.push({ start: length, end: length + text.length, style: 'heading' })
+      push(text)
+      continue
+    }
+    push(inline(raw, length, marks))
+  }
+  return { text: lines.join('\n'), marks }
+}
+
+const TOOL_ARGS = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'prompt', 'skill']
+
+/** A tool call's row, as the transcript names it: `Bash(ls -la)`, and its result's first line. */
+function toolBlock(use: ToolUseLike): Block {
+  const input = use.input ?? {}
+  const key = TOOL_ARGS.find(k => typeof input[k] === 'string') ?? Object.keys(input).find(k => typeof input[k] === 'string')
+  const arg = key ? String(input[key]).replace(/\s+/g, ' ').trim() : ''
+  const head = `${use.tool}(${arg.length > 80 ? `${arg.slice(0, 79)}…` : arg})`
+  const marks: ReplyCommentsMark[] = [{ start: 0, end: use.tool.length, style: 'bold' }]
+  const first = use.text?.split('\n').find(l => l.trim())?.trim()
+  if (!first) return { role: 'tool', text: head, marks, isError: use.isError }
+  const result = `⎿  ${first.length > 100 ? `${first.slice(0, 99)}…` : first}`
+  marks.push({ start: head.length + 1, end: head.length + 1 + result.length, style: 'dim' })
+  return { role: 'tool', text: `${head}\n${result}`, marks, isError: use.isError }
+}
+
+/**
+ * The whole conversation as one text, laid out as the transcript shows it:
+ * each of the person's prompts, each block of Claude's reply text (markdown
+ * drawn) and each tool call, a blank line between them. The reader draws the
+ * `❯` / `⏺` gutter beside each part. A slash command shows nothing itself.
+ */
+export function conversation(messages: readonly MessageLike[]): Conversation {
+  const blocks: Block[] = []
+  for (const m of messages) {
+    const text = clean(m.text)
+    if (m.role === 'assistant') {
+      if (text) blocks.push({ role: 'assistant', ...renderMarkdown(text) })
+      for (const use of m.toolUses ?? []) blocks.push(toolBlock(use))
+      continue
+    }
+    if (text && !isCommandRecord(text)) blocks.push({ role: 'user', ...renderMarkdown(text) })
   }
 
-  return parts.join('\n\n')
+  let text = ''
+  const parts: ReplyCommentsPart[] = []
+  const marks: ReplyCommentsMark[] = []
+  for (const b of blocks) {
+    if (text) text += '\n\n'
+    const start = text.length
+    parts.push(b.isError ? { role: b.role, start, end: start + b.text.length, isError: true } : { role: b.role, start, end: start + b.text.length })
+    for (const mk of b.marks) marks.push({ ...mk, start: mk.start + start, end: mk.end + start })
+    text += b.text
+  }
+  return { text, parts, marks }
 }
+
+/** The start of Claude's last reply text, where a new annotation starts. */
+export function lastReplyPart(parts: readonly ReplyCommentsPart[]): ReplyCommentsPart | undefined {
+  return [...parts].reverse().find(p => p.role === 'assistant')
+}
+
+/** The part a text offset is in, or undefined between parts. */
+export const partAt = (parts: readonly ReplyCommentsPart[], offset: number) =>
+  parts.find(p => offset >= p.start && offset <= p.end)
 
 // ---------- display rows ----------
 
@@ -413,18 +510,50 @@ function quote(text: string): string {
     .join('\n')
 }
 
-/** The one prompt that carries every comment, each under the span it is about. */
-export function buildPrompt(comments: readonly ReplyComment[], overall: string): string {
+const SNIPPET = 60
+
+function snippet(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > SNIPPET ? `${flat.slice(0, SNIPPET - 1)}…` : flat
+}
+
+/** Which message a comment is on, as the prompt names it to Claude. */
+function whereIs(c: ReplyComment, text: string, parts: readonly ReplyCommentsPart[]): string {
+  const at = parts.findIndex(p => c.start >= p.start && c.start <= p.end)
+  const part = parts[at]
+  if (!part) return 'the conversation'
+  if (part.role === 'user') return `my message "${snippet(text.slice(part.start, part.end))}"`
+  if (part.role === 'tool') return `your tool call ${snippet(text.slice(part.start, part.end).split('\n')[0]!)}`
+  if (part === lastReplyPart(parts)) return 'your last reply'
+  const prompt = [...parts.slice(0, at)].reverse().find(p => p.role === 'user')
+  return prompt ? `your reply to "${snippet(text.slice(prompt.start, prompt.end))}"` : 'an earlier reply of yours'
+}
+
+/**
+ * The one prompt that carries every comment, each under the span it is about.
+ * Given the conversation, comments outside Claude's last reply say which
+ * message they are on.
+ */
+export function buildPrompt(
+  comments: readonly ReplyComment[],
+  overall: string,
+  convo: Conversation = { text: '', parts: [], marks: [] },
+): string {
   const sorted = [...comments].sort((a, b) => a.start - b.start)
   const parts: string[] = []
 
   if (sorted.length > 0) {
+    const places = sorted.map(c => (convo.parts.length > 0 ? whereIs(c, convo.text, convo.parts) : 'your last reply'))
+    const isAllLast = places.every(p => p === 'your last reply')
+    const about = isAllLast ? 'your last reply' : 'our conversation'
     parts.push(
       sorted.length === 1
-        ? 'I left a comment on part of your last reply:'
-        : `I left ${sorted.length} comments on parts of your last reply:`,
+        ? `I left a comment on part of ${about}:`
+        : `I left ${sorted.length} comments on parts of ${about}:`,
     )
-    sorted.forEach((c, i) => parts.push(`${i + 1}. On this part:\n${quote(c.quote)}\n\n${c.text}`))
+    sorted.forEach((c, i) =>
+      parts.push(`${i + 1}. On this part${isAllLast ? '' : ` of ${places[i]}`}:\n${quote(c.quote)}\n\n${c.text}`),
+    )
   }
   if (overall.trim()) {
     parts.push(sorted.length > 0 ? `Overall: ${overall.trim()}` : overall.trim())
