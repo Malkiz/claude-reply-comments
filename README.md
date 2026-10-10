@@ -2,6 +2,9 @@
 
 A Claude Code mod for commenting inline on any part of the conversation, the way a PR review or Notion comments work. All the comments then go back to Claude as one prompt.
 
+> [!WARNING]
+> **100% vibe coded.** Claude wrote all of this, and I have not read a single line of the code. Use it at your own discretion. I am not responsible for any weird stuff that happens while you use this mod. Mods run unsandboxed inside Claude Code, so read the source before you install it. The [MIT license](LICENSE) applies: no warranty of any kind.
+
 Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the terminal (tmux on macOS), and it also draws in the desktop Code tab.
 
 ## Use
