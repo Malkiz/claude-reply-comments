@@ -149,8 +149,12 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
   if (!isSameInstance || live === undefined || live.rev !== props.rev) {
     live = fresh(props, isSameInstance ? live : surface.state, isSameInstance, layout)
     liveSurface = surface
-  } else if (props.reply !== live.reply && props.reply.startsWith(live.reply)) {
-    live = grow(live, props.reply, layout, startsOf(props))
+  } else if (props.reply !== live.reply) {
+    // grown at the end: appended in place; changed any other way: re-seeded, so
+    // the text drawn and the parts and marks it is drawn with never disagree
+    live = props.reply.startsWith(live.reply)
+      ? grow(live, props.reply, layout, startsOf(props))
+      : fresh(props, undefined, true, layout)
   }
 
   const commit = (next: ReaderState, action?: Action, ask?: Pick<ReaderPost, 'at' | 'edge'>) => {

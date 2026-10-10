@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, SessionMessage } from 'claude-code'
 
-import { LEGEND, buildPrompt, conversation, legendLines, renderMarkdown, selectionRange, wrap } from '../hooks/lib'
+import { LEGEND, buildPrompt, conversation, legendLines, remapComments, renderMarkdown, selectionRange, wrap } from '../hooks/lib'
 
 const REPLY = [
   'First paragraph about the plan.',
@@ -166,6 +166,33 @@ describe('lib', () => {
     expect(buildPrompt([{ start: at, end: at + 8, quote: 'Print it', text: 'how?' }], '', convo)).toContain(
       '1. On this part of your plan:\n> Print it',
     )
+  })
+
+  test('comments follow the text when a parallel tool call result lands above the newest row', () => {
+    const ask = { role: 'user' as const, text: 'check both', toolUses: [] }
+    const before = conversation([
+      ask,
+      { role: 'assistant', text: 'Running both.', toolUses: [{ tool: 'Bash', input: { command: 'echo a' } }, { tool: 'Bash', input: { command: 'echo b' } }] } as never,
+    ]).text
+    const after = conversation([
+      ask,
+      { role: 'assistant', text: 'Running both.', toolUses: [{ tool: 'Bash', input: { command: 'echo a' }, text: 'a' }, { tool: 'Bash', input: { command: 'echo b' } }] } as never,
+    ]).text
+    expect(after.startsWith(before)).toBe(false)
+    const at = (s: string) => before.indexOf(s)
+    const moved = remapComments(
+      [
+        { start: at('both.'), end: at('both.') + 5, quote: 'both.', text: 'ahead of the change' },
+        { start: at('echo b'), end: at('echo b') + 6, quote: 'echo b', text: 'past the change' },
+        { start: at('gone'), end: 0, quote: 'not in the text', text: 'dropped' },
+      ],
+      before,
+      after,
+    )
+    expect(moved.map(c => [after.slice(c.start, c.end), c.text])).toEqual([
+      ['both.', 'ahead of the change'],
+      ['echo b', 'past the change'],
+    ])
   })
 
   test('markdown is drawn without its markers, the styles kept beside the text', () => {

@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { ReplyComment, ReplyCommentsDraft, ReplyCommentsRelayed, ReplyCommentsView, ReplyCommentsWindow } from '../types'
-import { GROUP_COLUMN, buildPrompt, conversation, lastClaudePart, legendLines, mergeComments, sliceConversation, windowAround } from './lib'
+import { GROUP_COLUMN, buildPrompt, conversation, lastClaudePart, legendLines, mergeComments, offsetMapper, remapComments, sliceConversation, windowAround } from './lib'
 import type { TextWindow } from './lib'
 import type { ReaderPost, ReaderProps } from './reader'
 
@@ -133,10 +133,11 @@ let isRefreshPending = false
 let lastCursor = 0
 
 /**
- * Brings the open pane up to date with the conversation. Only growth is taken
- * in: the comments' offsets stay valid, and the reader keeps its cursor and
- * selection. A conversation rewritten under the pane (a compaction, /clear)
- * is left for the next /annotate.
+ * Brings the open pane up to date with the conversation. Growth at the end is
+ * taken in place: the comments' offsets stay valid, and the reader keeps its
+ * cursor and selection. A change further up (a tool result landing above a
+ * parallel call's row, a compaction) moves the comments and the cursor across
+ * and re-seeds the reader.
  */
 async function refresh($: $) {
   isRefreshPending = false
@@ -146,7 +147,21 @@ async function refresh($: $) {
   if (!Array.isArray(messages)) return
   const convo = conversation(messages)
   const d = await read($, draft)
-  if (convo.text === d.reply || d.reply === '' || !convo.text.startsWith(d.reply)) return
+  if (convo.text === d.reply || d.reply === '') return
+  if (!convo.text.startsWith(d.reply)) {
+    const cursor = offsetMapper(d.reply, convo.text)(lastCursor) ?? Math.min(lastCursor, convo.text.length)
+    const changed: ReplyCommentsDraft = {
+      ...d,
+      reply: convo.text,
+      parts: convo.parts,
+      marks: convo.marks,
+      comments: remapComments(d.comments, d.reply, convo.text),
+    }
+    lastCursor = cursor
+    await update($, win, () => ({ ...fitWindow(changed, cursor), cursor }))
+    await update($, draft, () => ({ ...changed, rev: changed.rev + 1 }))
+    return
+  }
 
   const grown: ReplyCommentsDraft = { ...d, reply: convo.text, parts: convo.parts, marks: convo.marks }
   const w = await read($, win)
@@ -162,8 +177,9 @@ async function refresh($: $) {
     await update($, draft, () => grown)
     return
   }
-  await update($, draft, () => ({ ...grown, rev: grown.rev + 1 }))
+  // the window first, then the rev: the reader re-seeds on the rev, from the new window
   await update($, win, () => ({ ...fitWindow(grown, lastCursor), cursor: lastCursor }))
+  await update($, draft, () => ({ ...grown, rev: grown.rev + 1 }))
 }
 
 function scheduleRefresh($: $) {

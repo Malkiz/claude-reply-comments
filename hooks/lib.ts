@@ -674,3 +674,45 @@ export function legendLines(width: number): { group: string; text: string }[] {
 }
 
 export { GROUP_COLUMN }
+
+// ---------- a conversation that changed under the pane ----------
+
+/**
+ * Maps offsets in `before` to `after` when the text changed in one region (a
+ * tool result landing above the newest row, a rewrite): offsets ahead of the
+ * change stay, offsets past it shift, offsets inside it map to undefined.
+ */
+export function offsetMapper(before: string, after: string): (offset: number) => number | undefined {
+  let head = 0
+  const shortest = Math.min(before.length, after.length)
+  while (head < shortest && before[head] === after[head]) head++
+  let tail = 0
+  while (tail < shortest - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++
+  const delta = after.length - before.length
+  return offset => (offset <= head ? offset : offset >= before.length - tail ? offset + delta : undefined)
+}
+
+/**
+ * The comments carried over to a changed conversation: moved with the text
+ * around them, or, where their text itself changed, found again by their
+ * quote (the occurrence nearest where they were). A quote no longer in the
+ * text drops its comment.
+ */
+export function remapComments(comments: readonly ReplyComment[], before: string, after: string): ReplyComment[] {
+  const map = offsetMapper(before, after)
+  const kept: ReplyComment[] = []
+  for (const c of comments) {
+    const start = map(c.start)
+    const end = map(c.end)
+    if (start !== undefined && end !== undefined && after.slice(start, end).includes(c.quote)) {
+      kept.push({ ...c, start, end })
+      continue
+    }
+    let best = -1
+    for (let at = after.indexOf(c.quote); at >= 0; at = after.indexOf(c.quote, at + 1)) {
+      if (best < 0 || Math.abs(at - c.start) < Math.abs(best - c.start)) best = at
+    }
+    if (best >= 0) kept.push({ ...c, start: best, end: best + c.quote.length })
+  }
+  return kept
+}
