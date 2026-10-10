@@ -62,3 +62,11 @@ The pane is opened with `closeOnEscape`, so Esc arrives as a `ui.close` the mod 
 Every row in the pane is exactly one cell tall, and the reader's height is the pane's body less the legend and the field. Nothing the reader draws can push the layout around.
 
 The vim engine is `hooks/vim.ts`: pure functions, tested in `tests/vim.test.ts`.
+
+## Ideas
+
+- [ ] **Show past comments over the conversation.** Comments sent from `/annotate` aren't lost: each reaches Claude as a prompt and stays in the session (and `--resume`). What disappears is the anchor, so after sending nothing shows which parts were commented on or how Claude answered each. On `/annotate`, find earlier sent prompts in `$.session.messages()` by their format ("I left N comments… On this part: > quote"), locate each quote in the conversation text, and draw those comments as dimmed highlights next to the new ones. No separate storage, so nothing to keep in sync, and it lives and dies with the session. Weak spot: a quote that appears in more than one place.
+- [ ] **Later, threads:** a comment, Claude's answer, a follow-up on the same spot, and a resolved state, as in a PR review.
+- **Not planned:** storing comments across sessions (`$.store`). A conversation doesn't outlive its session; comments on lasting artifacts (a PR, a doc) belong on the artifact.
+
+Other layouts were tried on Claude Code 2.1.286 (a cursor on the main transcript, a thin key pane, a floating overlay). The test mod is in `spikes/transcript-layouts/`, so the same tests can be rerun on a newer version.
