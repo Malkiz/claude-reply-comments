@@ -213,15 +213,49 @@ async function onKeysTyped($: $, value: string) {
   await relayKeys($, typed.map(key => ({ key })))
 }
 
-// The field grows as its text wraps, up to this many rows, the reader giving way.
-const MAX_FIELD_ROWS = 6
+// The field grows as its text wraps, the reader giving way, up to half the
+// pane's body (never less than this many rows).
+const MIN_FIELD_CAP = 6
 
-/** The rows a field needs to show `length` characters, its label and its submit hint included. */
-const rowsFor = (label: string, length: number, columns: number) =>
-  Math.max(1, Math.min(MAX_FIELD_ROWS, Math.ceil((label.length + length + 12) / Math.max(10, columns))))
+// What the field's own frame takes from the row besides its label and
+// submit hint (measured live: an 84-column pane wrapped its text at 64-69).
+const FIELD_CHROME = 4
 
-// The pane body's width, as last drawn, for sizing the field as it is typed in.
+/** How many rows `text` takes when wrapped at whole words into `width` columns. */
+function wrappedRows(text: string, width: number): number {
+  let rows = 1
+  let used = 0
+  for (const word of text.split(' ')) {
+    let w = word.length
+    const need = used === 0 ? w : used + 1 + w
+    if (need <= width) {
+      used = need
+      continue
+    }
+    rows++
+    while (w > width) {
+      w -= width
+      rows++
+    }
+    used = w
+  }
+  return rows
+}
+
+/**
+ * The rows a field needs for `text`: wrapped as the field wraps it, beside
+ * its label and submit hint, one column narrower than measured so it grows
+ * a little before the text reaches the edge.
+ */
+const rowsFor = (label: string, submit: string, text: string, columns: number) =>
+  Math.max(1, Math.min(Math.max(MIN_FIELD_CAP, Math.floor(bodyRows / 2)), wrappedRows(text, Math.max(10, columns - label.length - submit.length - 2 - FIELD_CHROME - 1))))
+
+/** The hint a field draws beside its text. */
+const submitOf = (v: ReplyCommentsView) => (v.inputKind === 'comment' ? 'save' : 'go')
+
+// The pane body's size, as last drawn, for sizing the field as it is typed in.
 let bodyColumns = 80
+let bodyRows = 20
 
 const FIELD_LABEL = {
   comment: 'Comment',
@@ -317,7 +351,7 @@ export const register: Register = on => {
         // left in it, and its cursor at the end of the text it starts with.
         const mark = MARKS[(MARKS.indexOf(await read($, fieldMark)) + 1) % MARKS.length]!
         await update($, fieldMark, () => mark)
-        await update($, fieldRows, () => rowsFor(FIELD_LABEL[fieldKindOf(post.view)], post.view.draft.length, bodyColumns))
+        await update($, fieldRows, () => rowsFor(FIELD_LABEL[fieldKindOf(post.view)], submitOf(post.view), post.view.draft, bodyColumns))
         void $.ui.focus({ requestId: PANE, key: fieldKey(mark) }).catch(() => undefined)
       } else if (!isTypingInPane(post.view) && isTypingInPane(was)) {
         void $.ui.focus({ requestId: PANE, key: 'keys' }).catch(() => undefined)
@@ -352,6 +386,7 @@ export const register: Register = on => {
       const mark = await read($, fieldMark)
       const legendRows = showLegend ? legendLines(e.props.bodyColumns) : []
       bodyColumns = e.props.bodyColumns
+      bodyRows = e.props.scroll.bodyRows
       const fieldKind = fieldKindOf(v)
       const fieldHeight = isTypingInPane(v) ? await read($, fieldRows) : 1
       const readerRows = Math.max(3, e.props.scroll.bodyRows - legendRows.length - fieldHeight)
@@ -382,10 +417,10 @@ export const register: Register = on => {
                   key={fieldKey(mark)}
                   label={FIELD_LABEL[fieldKind]}
                   value={v.draft}
-                  submitLabel={v.inputKind === 'comment' ? 'save' : 'go'}
+                  submitLabel={submitOf(v)}
                   autoFocus
                   onInput={text => {
-                    const rows = rowsFor(FIELD_LABEL[fieldKind], unmarked(text).length, bodyColumns)
+                    const rows = rowsFor(FIELD_LABEL[fieldKind], submitOf(v), unmarked(text), bodyColumns)
                     void read($, fieldRows).then(was => (was === rows ? undefined : update($, fieldRows, () => rows)))
                   }}
                   onSubmit={text => relayKeys($, [{ key: 'submit', text: unmarked(text) }])}
