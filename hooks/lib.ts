@@ -81,8 +81,26 @@ export function renderMarkdown(source: string): { text: string; marks: ReplyComm
 
 const TOOL_ARGS = ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description', 'prompt', 'skill']
 
+/** A plan Claude presents (`ExitPlanMode`): drawn in full, markdown rendered, under a header. */
+function planBlock(use: ToolUseLike, plan: string): Block {
+  const head = 'Plan'
+  const body = renderMarkdown(plan.trim())
+  const marks: ReplyCommentsMark[] = [{ start: 0, end: head.length, style: 'bold' }]
+  for (const m of body.marks) marks.push({ ...m, start: m.start + head.length + 1, end: m.end + head.length + 1 })
+  let text = `${head}\n${body.text}`
+  const first = use.text?.split('\n').find(l => l.trim())?.trim()
+  if (first) {
+    const result = `⎿  ${first.length > 100 ? `${first.slice(0, 99)}…` : first}`
+    marks.push({ start: text.length + 1, end: text.length + 1 + result.length, style: 'dim' })
+    text += `\n${result}`
+  }
+  return { role: 'plan', text, marks, isError: use.isError }
+}
+
 /** A tool call's row, as the transcript names it: `Bash(ls -la)`, and its result's first line. */
 function toolBlock(use: ToolUseLike): Block {
+  const plan = use.tool === 'ExitPlanMode' ? use.input?.plan : undefined
+  if (typeof plan === 'string' && plan.trim()) return planBlock(use, plan)
   const input = use.input ?? {}
   const key = TOOL_ARGS.find(k => typeof input[k] === 'string') ?? Object.keys(input).find(k => typeof input[k] === 'string')
   const arg = key ? String(input[key]).replace(/\s+/g, ' ').trim() : ''
@@ -98,7 +116,8 @@ function toolBlock(use: ToolUseLike): Block {
 /**
  * The whole conversation as one text, laid out as the transcript shows it:
  * each of the person's prompts, each block of Claude's reply text (markdown
- * drawn) and each tool call, a blank line between them. The reader draws the
+ * drawn), each tool call and each plan Claude presents (in full), a blank
+ * line between them. The reader draws the
  * `❯` / `⏺` gutter beside each part. A slash command shows nothing itself.
  */
 export function conversation(messages: readonly MessageLike[]): Conversation {
@@ -124,6 +143,11 @@ export function conversation(messages: readonly MessageLike[]): Conversation {
     text += b.text
   }
   return { text, parts, marks }
+}
+
+/** Claude's latest reply text or plan, where a new annotation opens. */
+export function lastClaudePart(parts: readonly ReplyCommentsPart[]): ReplyCommentsPart | undefined {
+  return [...parts].reverse().find(p => p.role === 'assistant' || p.role === 'plan')
 }
 
 /** The start of Claude's last reply text, where a new annotation starts. */
@@ -573,6 +597,7 @@ function whereIs(c: ReplyComment, text: string, parts: readonly ReplyCommentsPar
   const part = parts[at]
   if (!part) return 'the conversation'
   if (part.role === 'user') return `my message "${snippet(text.slice(part.start, part.end))}"`
+  if (part.role === 'plan') return 'your plan'
   if (part.role === 'tool') return `your tool call ${snippet(text.slice(part.start, part.end).split('\n')[0]!)}`
   if (part === lastReplyPart(parts)) return 'your last reply'
   const prompt = [...parts.slice(0, at)].reverse().find(p => p.role === 'user')

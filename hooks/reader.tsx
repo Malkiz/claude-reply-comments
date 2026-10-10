@@ -1,7 +1,7 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface } from 'claude-code'
 
 import type { ReplyComment, ReplyCommentsMark, ReplyCommentsPart, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
-import { commentAt, lastReplyPart, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
+import { commentAt, lastClaudePart, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
 import type { Line } from './lib'
 import { escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
 import type { Action, Layout, StepResult, VimState } from './vim'
@@ -36,6 +36,8 @@ export type ReaderPost = {
   at?: number
   /** With `window`: go to the conversation's very start or end (`gg`, `G`). */
   edge?: 'start' | 'end'
+  /** The cursor, local to the window, so a window moved for new text keeps it. */
+  cursor?: number
 }
 
 type ReaderState = VimState & { relaySeq: number; isDragging: boolean }
@@ -57,7 +59,7 @@ const newestSeq = (relay: readonly ReplyCommentsRelayed[] | undefined) =>
   (relay ?? []).reduce((n, r) => Math.max(n, r.seq), 0)
 
 /**
- * Where a new annotation opens: the cursor on Claude's last reply, the window
+ * Where a new annotation opens: the cursor on Claude's last reply or plan, the window
  * at the bottom of the conversation as the transcript sits, or at the reply's
  * start when the reply is taller than the window.
  */
@@ -69,9 +71,24 @@ function opening(props: ReaderProps, at: Layout): { cursor: number; top: number 
     const row = lineOf(lines, cursor)
     return { cursor, top: Math.max(0, Math.min(row - Math.floor(at.rows / 2), lines.length - at.rows)) }
   }
-  const cursor = Math.max(0, lastReplyPart(props.parts ?? [])?.start ?? 0)
+  const cursor = Math.max(0, lastClaudePart(props.parts ?? [])?.start ?? 0)
   const row = lineOf(lines, cursor)
   return { cursor, top: Math.max(0, Math.min(row - 1, lines.length - at.rows)) }
+}
+
+/**
+ * The conversation grew while the pane was open: the new text is appended and
+ * the cursor, selection and comments stay. A view that was showing the end
+ * follows it down, as the transcript does, while the cursor stays on screen.
+ */
+function grow(s: ReaderState, reply: string, at: Layout): ReaderState {
+  const before = wrap(s.reply, at.columns)
+  const after = wrap(reply, at.columns)
+  const wasAtEnd = s.top + at.rows >= before.length
+  const grown = { ...s, reply }
+  if (!wasAtEnd) return grown
+  const top = Math.max(0, after.length - at.rows)
+  return lineOf(after, s.cursor) >= top ? { ...grown, top } : grown
 }
 
 /**
@@ -123,12 +140,14 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
   if (!isSameInstance || live === undefined || live.rev !== props.rev) {
     live = fresh(props, isSameInstance ? live : surface.state, isSameInstance, layout)
     liveSurface = surface
+  } else if (props.reply !== live.reply && props.reply.startsWith(live.reply)) {
+    live = grow(live, props.reply, layout)
   }
 
   const commit = (next: ReaderState, action?: Action, ask?: Pick<ReaderPost, 'at' | 'edge'>) => {
     live = next
     surface.setState(next)
-    const data: ReaderPost = { comments: next.comments, overall: next.overall, view: viewOf(next) }
+    const data: ReaderPost = { comments: next.comments, overall: next.overall, view: viewOf(next), cursor: next.cursor }
     if (action) data.action = action
     else if (ask && askedRev !== next.rev) {
       askedRev = next.rev
@@ -272,6 +291,7 @@ function draw(surface: ClientSurface<ReaderState>, s: ReaderState, props: Reader
     if (!part) return <Text>{'  '}</Text>
     if (part.role === 'user') return <Text dimColor>{'❯ '}</Text>
     if (part.role === 'tool') return <Text color={part.isError ? 'red' : 'green'}>{'⏺ '}</Text>
+    if (part.role === 'plan') return <Text color="cyan">{'⏺ '}</Text>
     return <Text>{'⏺ '}</Text>
   }
 

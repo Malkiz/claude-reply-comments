@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { ReplyComment, ReplyCommentsDraft, ReplyCommentsRelayed, ReplyCommentsView, ReplyCommentsWindow } from '../types'
-import { GROUP_COLUMN, buildPrompt, conversation, lastReplyPart, legendLines, mergeComments, sliceConversation, windowAround } from './lib'
+import { GROUP_COLUMN, buildPrompt, conversation, lastClaudePart, legendLines, mergeComments, sliceConversation, windowAround } from './lib'
 import type { TextWindow } from './lib'
 import type { ReaderPost, ReaderProps } from './reader'
 
@@ -90,6 +90,7 @@ function asPost(data: unknown): ReaderPost | undefined {
   const post: ReaderPost = { comments: d.comments, overall: d.overall, view: d.view, action }
   if (typeof d.at === 'number' && Number.isFinite(d.at)) post.at = d.at
   if (d.edge === 'start' || d.edge === 'end') post.edge = d.edge
+  if (typeof d.cursor === 'number' && Number.isFinite(d.cursor)) post.cursor = d.cursor
   return post
 }
 
@@ -122,6 +123,53 @@ function fitWindow(d: ReplyCommentsDraft, center: number): TextWindow {
     if (size < 2_000 || JSON.stringify(readerProps(d, w, [])).length <= PROPS_LIMIT) return w
     size = Math.floor(size * 0.75)
   }
+}
+
+// While the pane is open, new rows of the conversation are drawn as they are
+// stored: a short wait folds a burst of rows into one refresh.
+const REFRESH_DELAY_MS = 150
+let isRefreshPending = false
+// The reader's cursor, as an offset into the whole conversation, as last posted.
+let lastCursor = 0
+
+/**
+ * Brings the open pane up to date with the conversation. Only growth is taken
+ * in: the comments' offsets stay valid, and the reader keeps its cursor and
+ * selection. A conversation rewritten under the pane (a compaction, /clear)
+ * is left for the next /annotate.
+ */
+async function refresh($: $) {
+  isRefreshPending = false
+  const panes = await $.ui.panes()
+  if (!panes.some(p => p.id === PANE)) return
+  const messages = await $.session.messages()
+  if (!Array.isArray(messages)) return
+  const convo = conversation(messages)
+  const d = await read($, draft)
+  if (convo.text === d.reply || d.reply === '' || !convo.text.startsWith(d.reply)) return
+
+  const grown: ReplyCommentsDraft = { ...d, reply: convo.text, parts: convo.parts, marks: convo.marks }
+  const w = await read($, win)
+  if (w.end < d.reply.length) {
+    await update($, draft, () => grown)
+    return
+  }
+  // The window reached the end: it takes in the new text, or, past the props
+  // limit, moves on with the reader re-seeded where its cursor was.
+  const wider = { start: w.start, end: convo.text.length }
+  if (JSON.stringify(readerProps(grown, wider, [])).length <= PROPS_LIMIT) {
+    await update($, win, () => wider)
+    await update($, draft, () => grown)
+    return
+  }
+  await update($, draft, () => ({ ...grown, rev: grown.rev + 1 }))
+  await update($, win, () => ({ ...fitWindow(grown, lastCursor), cursor: lastCursor }))
+}
+
+function scheduleRefresh($: $) {
+  if (isRefreshPending) return
+  isRefreshPending = true
+  $.clock.after(REFRESH_DELAY_MS, () => void refresh($).catch(() => undefined))
 }
 
 /** Moves the reader's window to center on `cursor` (an offset into the whole conversation). */
@@ -278,7 +326,7 @@ export const register: Register = on => {
   on('command.run', { command: COMMAND }, async $ => {
     const messages = await $.session.messages()
     const convo = conversation(Array.isArray(messages) ? messages : [])
-    if (!lastReplyPart(convo.parts)) return { text: 'There is no reply to annotate yet.' }
+    if (!lastClaudePart(convo.parts)) return { text: 'There is no reply to annotate yet.' }
 
     // Unsent comments carry over while the conversation has only grown since:
     // what they point at is still where it was.
@@ -325,6 +373,14 @@ export const register: Register = on => {
     return { deny: 'Escape stays in the pane; q closes it' }
   })
 
+  // A row stored in the main conversation (a prompt, a reply block, a tool
+  // call or its result) reaches the open pane shortly after.
+  on('session.append', async ($, e, next) => {
+    const stored = await next(e)
+    if (e.agentId === undefined && (e.message.type === 'user' || e.message.type === 'assistant')) scheduleRefresh($)
+    return stored
+  })
+
   // The wheel (or trackpad) over the pane scrolls the reply. The pane's own
   // window never moves: the reader fills it exactly and scrolls its text itself.
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
@@ -339,6 +395,7 @@ export const register: Register = on => {
 
     const d = await read($, draft)
     const w = await read($, win)
+    if (post.cursor !== undefined) lastCursor = w.start + post.cursor
     const comments = mergeComments(d.comments, post.comments, w)
     if (!same(d.comments, comments) || d.overall !== post.overall) {
       await update($, draft, cur => ({ ...cur, comments, overall: post.overall }))

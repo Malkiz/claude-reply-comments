@@ -11,8 +11,8 @@ export type ReplyComment = {
 
 /** One message of the conversation, where it sits in the annotated text. */
 export type ReplyCommentsPart = {
-  /** The person's prompt, a block of Claude's reply text, or one tool call. */
-  role: 'user' | 'assistant' | 'tool'
+  /** The person's prompt, a block of Claude's reply text, one tool call, or a plan Claude presents. */
+  role: 'user' | 'assistant' | 'tool' | 'plan'
   start: number
   end: number
   /** A tool call that ended in an error. */

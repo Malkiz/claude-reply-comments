@@ -145,6 +145,29 @@ describe('lib', () => {
     expect(conversation([{ role: 'user', text: 'hi', toolUses: [] }]).parts.some(p => p.role === 'assistant')).toBe(false)
   })
 
+  test('a plan Claude presents is drawn in full and named in the prompt', () => {
+    const convo = conversation([
+      { role: 'user', text: 'plan it', toolUses: [] },
+      {
+        role: 'assistant',
+        text: '',
+        toolUses: [
+          {
+            tool: 'ExitPlanMode',
+            input: { plan: '# Add a flag\n\n1. **Parse** it\n2. Print it', planFilePath: '/p.md' },
+            text: 'rejected',
+          },
+        ],
+      },
+    ])
+    expect(convo.text).toBe('plan it\n\nPlan\nAdd a flag\n\n1. Parse it\n2. Print it\n⎿  rejected')
+    expect(convo.parts.map(p => p.role)).toEqual(['user', 'plan'])
+    const at = convo.text.indexOf('Print it')
+    expect(buildPrompt([{ start: at, end: at + 8, quote: 'Print it', text: 'how?' }], '', convo)).toContain(
+      '1. On this part of your plan:\n> Print it',
+    )
+  })
+
   test('markdown is drawn without its markers, the styles kept beside the text', () => {
     const r = renderMarkdown('## Plan\nUse **bold** and `code`.\n```ts\nconst x = 1\n```\nend')
     expect(r.text).toBe('Plan\nUse bold and code.\nconst x = 1\nend')

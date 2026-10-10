@@ -6,7 +6,9 @@ Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the
 
 ## Use
 
-`/annotate` opens a pane with the whole conversation and gives it the keyboard. The pane draws the conversation the way the transcript does: `❯` on your prompts, `⏺` on Claude's replies and tool calls (`Bash(ls)` with its first result line), markdown rendered. It opens at the bottom with the cursor on Claude's last reply, and you can move anywhere above it. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
+`/annotate` opens a pane with the whole conversation and gives it the keyboard. The pane draws the conversation the way the transcript does: `❯` on your prompts, `⏺` on Claude's replies and tool calls (`Bash(ls)` with its first result line), markdown rendered. A plan Claude presents in plan mode is drawn in full, so you can comment on its steps (reject the plan dialog, then `/annotate`). It opens at the bottom with the cursor on Claude's last reply or plan, and you can move anywhere above it.
+
+The pane stays live: while it is open, new prompts, replies and tool calls appear in it as Claude works (a block at a time), without moving your cursor or selection. Click the prompt box to type there while the pane stays open. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
 
 | Group | Keys |
 | --- | --- |
