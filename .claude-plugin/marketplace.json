@@ -1,0 +1,15 @@
+{
+  "name": "claude-reply-comments",
+  "description": "claude-reply-comments: review the Claude Code conversation like a pull request",
+  "owner": {
+    "name": "Malkiz",
+    "url": "https://github.com/Malkiz"
+  },
+  "plugins": [
+    {
+      "name": "reply-comments",
+      "source": "./",
+      "description": "Comment inline on any part of the conversation, then send all comments to Claude as one prompt (/annotate)"
+    }
+  ]
+}
