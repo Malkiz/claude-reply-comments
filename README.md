@@ -26,6 +26,8 @@ The prompt quotes each selected span, with its comment under it, in conversation
 
 Unsent comments are kept when you close the pane, and still there when you reopen it after the conversation has grown.
 
+A long conversation is handed to the reader a window at a time (about 60,000 characters), because a `Client`'s props may serialize to at most 100,000 characters. The window moves by itself as the cursor nears its edge, and `gg` / `G` jump to the very start and end. Within a window, line numbers in the status row, `:12` and `/` search cover that window only. Comments are kept for the whole conversation.
+
 The pane opens docked beside the transcript. Its width is the one Claude Code keeps for every pane: drag the divider to make it as wide as you like (the transcript keeps at least 24 columns).
 
 ## Install

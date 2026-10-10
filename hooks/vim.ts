@@ -54,6 +54,8 @@ export type VimState = {
   overall: string
   top: number
   flash?: string
+  /** Comments held outside the text this state covers (a window of a longer conversation). */
+  elsewhere?: number
 }
 
 /** What the pane does on the reader's behalf. */
@@ -271,7 +273,7 @@ function saveComment(s: VimState, text: string): VimState {
 function runCommand(s: VimState, text: string, layout: Layout): StepResult {
   const cmd = text.trim()
   const base: VimState = { ...s, mode: 'normal', inputKind: undefined, draft: '' }
-  const hasAny = s.comments.length > 0 || s.overall.trim() !== ''
+  const hasAny = s.comments.length > 0 || (s.elsewhere ?? 0) > 0 || s.overall.trim() !== ''
   if (/^\d+$/.test(cmd)) return { state: scrolled({ ...base, cursor: firstNonBlank(s.reply, nthLine(s.reply, Number(cmd))) }, layout) }
   switch (cmd) {
     case '':
@@ -448,7 +450,7 @@ function command(s0: VimState, key: string, via: Via, layout: Layout): StepResul
   const s: VimState = { ...s0, pending: '' }
   const isVisual = s.mode === 'visual' || s.mode === 'vline'
   const here = commentAt(s.comments, s.cursor)
-  const hasAny = s.comments.length > 0 || s.overall.trim() !== ''
+  const hasAny = s.comments.length > 0 || (s.elsewhere ?? 0) > 0 || s.overall.trim() !== ''
 
   if (key === '?') return { state: s, action: 'legend' }
 

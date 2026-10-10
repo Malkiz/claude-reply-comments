@@ -17,6 +17,13 @@ export type ReaderProps = {
   rev: number
   /** Keys typed in the pane's key field, newest last; applied once each, by `seq`. */
   relay: ReplyCommentsRelayed[]
+  /** Whether the conversation goes on above / below this window of it. */
+  before?: boolean
+  after?: boolean
+  /** Comments outside this window, counted in the status row. */
+  elsewhere?: number
+  /** Where the cursor goes when the window has moved, local to it. */
+  cursor?: number
 }
 
 /** What the reader posts back: the whole draft and its own view, each time. */
@@ -24,7 +31,11 @@ export type ReaderPost = {
   comments: ReplyComment[]
   overall: string
   view: ReplyCommentsView
-  action?: Action
+  action?: Action | 'window'
+  /** With `window`: the cursor, local, to center the next window on. */
+  at?: number
+  /** With `window`: go to the conversation's very start or end (`gg`, `G`). */
+  edge?: 'start' | 'end'
 }
 
 type ReaderState = VimState & { relaySeq: number; isDragging: boolean }
@@ -33,6 +44,8 @@ type ReaderState = VimState & { relaySeq: number; isDragging: boolean }
 const FOOTER_ROWS = 1
 /** The `❯` / `⏺` column left of the text, as the transcript draws it. */
 const GUTTER = 2
+/** How near the window's edge (a share of its text) the cursor comes before the window moves. */
+const EDGE_SHARE = 0.15
 
 // The instance's live state: handlers read it so keys pressed faster than a
 // frame build on each other instead of on the last drawn state.
@@ -49,11 +62,35 @@ const newestSeq = (relay: readonly ReplyCommentsRelayed[] | undefined) =>
  * start when the reply is taller than the window.
  */
 function opening(props: ReaderProps, at: Layout): { cursor: number; top: number } {
-  const cursor = lastReplyPart(props.parts ?? [])?.start ?? 0
   const lines = wrap(props.reply, at.columns)
+  if (props.cursor !== undefined) {
+    // the window moved: the cursor stays where it was, mid-screen
+    const cursor = Math.max(0, Math.min(props.cursor, Math.max(0, props.reply.length - 1)))
+    const row = lineOf(lines, cursor)
+    return { cursor, top: Math.max(0, Math.min(row - Math.floor(at.rows / 2), lines.length - at.rows)) }
+  }
+  const cursor = Math.max(0, lastReplyPart(props.parts ?? [])?.start ?? 0)
   const row = lineOf(lines, cursor)
   return { cursor, top: Math.max(0, Math.min(row - 1, lines.length - at.rows)) }
 }
+
+/**
+ * Whether the reader should ask for another window: `gg` / `G` with more of
+ * the conversation beyond, or the cursor near an edge the conversation goes on
+ * past. Only in normal mode, so a selection or an input is never cut short.
+ */
+function windowAsk(prev: ReaderState, next: ReaderState, key: string, props: ReaderProps): Pick<ReaderPost, 'at' | 'edge'> | undefined {
+  if (next.mode !== 'normal' || next.pending !== '') return undefined
+  if (key === 'g' && prev.pending === 'g' && props.before) return { edge: 'start' }
+  if (key === 'G' && prev.pending === '' && props.after) return { edge: 'end' }
+  const edge = next.reply.length * EDGE_SHARE
+  if (next.cursor === prev.cursor) return undefined
+  if ((props.before && next.cursor < edge) || (props.after && next.cursor > next.reply.length - edge)) return { at: next.cursor }
+  return undefined
+}
+
+// The rev a window was asked for under, so it is asked for once.
+let askedRev = -1
 
 function fresh(props: ReaderProps, prev: ReaderState | undefined, isSameInstance: boolean, at: Layout): ReaderState {
   const base = initialState(props.reply, props.comments, props.overall, props.rev)
@@ -64,6 +101,7 @@ function fresh(props: ReaderProps, prev: ReaderState | undefined, isSameInstance
     cursor: open ? open.cursor : Math.min(prev!.cursor, Math.max(0, props.reply.length - 1)),
     top: open ? open.top : prev!.top,
     search: keep ? prev.search : '',
+    elsewhere: props.elsewhere ?? 0,
     relaySeq: Math.max(isSameInstance ? (prev?.relaySeq ?? 0) : 0, newestSeq(props.relay)),
     isDragging: false,
   }
@@ -87,11 +125,15 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
     liveSurface = surface
   }
 
-  const commit = (next: ReaderState, action?: Action) => {
+  const commit = (next: ReaderState, action?: Action, ask?: Pick<ReaderPost, 'at' | 'edge'>) => {
     live = next
     surface.setState(next)
     const data: ReaderPost = { comments: next.comments, overall: next.overall, view: viewOf(next) }
     if (action) data.action = action
+    else if (ask && askedRev !== next.rev) {
+      askedRev = next.rev
+      Object.assign(data, { action: 'window' }, ask)
+    }
     surface.post(data)
   }
 
@@ -100,7 +142,9 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
   if (pending.length > 0) {
     let s = live
     let action: Action | undefined
+    let ask: Pick<ReaderPost, 'at' | 'edge'> | undefined
     for (const r of pending) {
+      const before = s
       const result =
         r.key === 'submit'
           ? apply(s, submitInput(s, r.text ?? '', layout))
@@ -111,14 +155,15 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
             : apply(s, step(s, { key: r.key }, 'pane', layout))
       s = { ...result.state, relaySeq: r.seq }
       action = result.action ?? action
+      ask = windowAsk(before, s, r.key, props) ?? ask
     }
-    commit(s, action)
+    commit(s, action, ask)
   }
 
   surface.onKey(event => {
     if (!live) return
     const result = apply(live, step(live, event, 'reader', layout))
-    commit(result.state, result.action)
+    commit(result.state, result.action, windowAsk(live, result.state, event.key, props))
   })
   surface.onPointer(event => {
     if (!live) return
@@ -269,7 +314,7 @@ function draw(surface: ClientSurface<ReaderState>, s: ReaderState, props: Reader
   return (
     <Box flexDirection="column">
       {textRows}
-      {statusRow(surface, s, lines, top, rows)}
+      {statusRow(surface, s, lines, top, rows, props.elsewhere ?? 0)}
     </Box>
   )
 }
@@ -281,7 +326,7 @@ const MODE_LABEL: Record<VimState['mode'], string> = {
   input: 'INPUT',
 }
 
-function statusRow(surface: ClientSurface<ReaderState>, s: ReaderState, lines: readonly Line[], top: number, rows: number) {
+function statusRow(surface: ClientSurface<ReaderState>, s: ReaderState, lines: readonly Line[], top: number, rows: number, elsewhere: number) {
   const { Box, Text } = surface.elements
   const label =
     s.mode !== 'input'
@@ -291,7 +336,8 @@ function statusRow(surface: ClientSurface<ReaderState>, s: ReaderState, lines: r
         : s.inputKind === 'search'
           ? 'SEARCH'
           : 'COMMAND'
-  const count = `${s.comments.length} comment${s.comments.length === 1 ? '' : 's'}${s.overall.trim() ? ' + overall' : ''}`
+  const total = s.comments.length + elsewhere
+  const count = `${total} comment${total === 1 ? '' : 's'}${s.overall.trim() ? ' + overall' : ''}`
   const where = `${lineOf(lines, s.cursor) + 1}/${lines.length}${top + rows < lines.length ? ' ↓' : ''}`
   const prefix = s.inputKind === 'search' ? '/' : s.inputKind === 'command' ? ':' : '> '
 

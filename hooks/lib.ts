@@ -131,9 +131,59 @@ export function lastReplyPart(parts: readonly ReplyCommentsPart[]): ReplyComment
   return [...parts].reverse().find(p => p.role === 'assistant')
 }
 
-/** The part a text offset is in, or undefined between parts. */
-export const partAt = (parts: readonly ReplyCommentsPart[], offset: number) =>
-  parts.find(p => offset >= p.start && offset <= p.end)
+// ---------- the reader's window ----------
+
+/** A span of the conversation text the reader is handed, offsets [start, end). */
+export type TextWindow = { start: number; end: number }
+
+/**
+ * About `size` characters of `text` around `center`, cut at line breaks: the
+ * reader's props are bounded, so a long conversation is handed over a piece
+ * at a time.
+ */
+export function windowAround(text: string, center: number, size: number): TextWindow {
+  if (text.length <= size) return { start: 0, end: text.length }
+  let start = Math.max(0, Math.min(center - Math.floor(size / 2), text.length - size))
+  let end = Math.min(text.length, start + size)
+  if (start > 0) {
+    const nl = text.indexOf('\n', start)
+    if (nl >= 0 && nl < end) start = nl + 1
+  }
+  if (end < text.length) {
+    const nl = text.lastIndexOf('\n', end)
+    if (nl > start) end = nl
+  }
+  return { start, end }
+}
+
+/**
+ * The conversation as the reader sees it through a window: the text, parts,
+ * marks and comments, offsets made local. A part cut by the window's start
+ * keeps a negative start, so no gutter mark is drawn for it; a comment is
+ * handed over only when the window holds all of it.
+ */
+export function sliceConversation(
+  convo: Conversation,
+  comments: readonly ReplyComment[],
+  win: TextWindow,
+): Conversation & { comments: ReplyComment[] } {
+  const shift = <T extends { start: number; end: number }>(r: T): T => ({ ...r, start: r.start - win.start, end: r.end - win.start })
+  return {
+    text: convo.text.slice(win.start, win.end),
+    parts: convo.parts.filter(p => p.end > win.start && p.start < win.end).map(shift),
+    marks: convo.marks
+      .filter(m => m.end > win.start && m.start < win.end)
+      .map(m => shift({ ...m, start: Math.max(m.start, win.start), end: Math.min(m.end, win.end) })),
+    comments: comments.filter(c => c.start >= win.start && c.end <= win.end).map(shift),
+  }
+}
+
+/** The reader's comments, local to the window, merged back into the whole draft's. */
+export function mergeComments(all: readonly ReplyComment[], local: readonly ReplyComment[], win: TextWindow): ReplyComment[] {
+  const outside = all.filter(c => !(c.start >= win.start && c.end <= win.end))
+  const inside = local.map(c => ({ ...c, start: c.start + win.start, end: c.end + win.start }))
+  return [...outside, ...inside]
+}
 
 // ---------- display rows ----------
 

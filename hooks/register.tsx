@@ -1,9 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { ReplyComment, ReplyCommentsDraft, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
-import { GROUP_COLUMN, buildPrompt, conversation, lastReplyPart, legendLines } from './lib'
-import type { ReaderPost } from './reader'
+import type { ReplyComment, ReplyCommentsDraft, ReplyCommentsRelayed, ReplyCommentsView, ReplyCommentsWindow } from '../types'
+import { GROUP_COLUMN, buildPrompt, conversation, lastReplyPart, legendLines, mergeComments, sliceConversation, windowAround } from './lib'
+import type { TextWindow } from './lib'
+import type { ReaderPost, ReaderProps } from './reader'
 
 const PANE = 'reply-comments'
 const COMMAND = 'annotate'
@@ -17,6 +18,12 @@ const REFOCUS_DELAY_MS = 80
 // An Escape whose close arrives while the pane holds the keyboard, or this soon
 // after it lost it (the redraw and the close race), came from inside the pane.
 const ESCAPE_WINDOW_MS = 500
+
+// A Client's props may serialize to at most 100,000 characters, so the reader
+// is handed the conversation a window at a time: about this much text, made
+// smaller until the props fit under the limit with room for the relayed keys.
+const WINDOW_CHARS = 60_000
+const PROPS_LIMIT = 95_000
 
 const EMPTY: ReplyCommentsDraft = { reply: '', parts: [], marks: [], comments: [], overall: '', rev: 0 }
 const NORMAL: ReplyCommentsView = { mode: 'normal', via: 'reader', target: 'comment', draft: '', pending: '' }
@@ -32,6 +39,7 @@ const view = atom({ plugin: 'reply-comments', key: 'view' } as const, NORMAL)
 const legend = atom({ plugin: 'reply-comments', key: 'legend' } as const, false)
 const keysDrawn = atom({ plugin: 'reply-comments', key: 'keysDrawn' } as const, MARKS[0]!)
 const fieldMark = atom({ plugin: 'reply-comments', key: 'fieldMark' } as const, MARKS[0]!)
+const win = atom({ plugin: 'reply-comments', key: 'window' } as const, { start: 0, end: 0 } as ReplyCommentsWindow)
 
 /** The field's key: one per mark, so each input gets a field of its own. */
 export const fieldKey = (mark: string) => `field${MARKS.indexOf(mark)}`
@@ -69,7 +77,7 @@ function isView(v: unknown): v is ReplyCommentsView {
   )
 }
 
-const ACTIONS = new Set(['send', 'fill', 'close', 'clear', 'legend'])
+const ACTIONS = new Set(['send', 'fill', 'close', 'clear', 'legend', 'window'])
 
 function asPost(data: unknown): ReaderPost | undefined {
   if (typeof data !== 'object' || data === null) return undefined
@@ -78,10 +86,51 @@ function asPost(data: unknown): ReaderPost | undefined {
     return undefined
   }
   const action = typeof d.action === 'string' && ACTIONS.has(d.action) ? (d.action as ReaderPost['action']) : undefined
-  return { comments: d.comments, overall: d.overall, view: d.view, action }
+  const post: ReaderPost = { comments: d.comments, overall: d.overall, view: d.view, action }
+  if (typeof d.at === 'number' && Number.isFinite(d.at)) post.at = d.at
+  if (d.edge === 'start' || d.edge === 'end') post.edge = d.edge
+  return post
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/** What the reader is handed: the window's piece of the conversation, offsets local to it. */
+function readerProps(d: ReplyCommentsDraft, w: ReplyCommentsWindow, relayed: ReplyCommentsRelayed[]): ReaderProps {
+  const piece = sliceConversation({ text: d.reply, parts: d.parts, marks: d.marks }, d.comments, w)
+  const props: ReaderProps = {
+    reply: piece.text,
+    parts: piece.parts,
+    marks: piece.marks,
+    comments: piece.comments,
+    overall: d.overall,
+    rev: d.rev,
+    relay: relayed,
+    before: w.start > 0,
+    after: w.end < d.reply.length,
+    elsewhere: d.comments.length - piece.comments.length,
+  }
+  if (w.cursor !== undefined && w.cursor >= w.start && w.cursor <= w.end) props.cursor = w.cursor - w.start
+  return props
+}
+
+/** The largest window around `center` whose props fit under the limit. */
+function fitWindow(d: ReplyCommentsDraft, center: number): TextWindow {
+  let size = WINDOW_CHARS
+  for (;;) {
+    const w = windowAround(d.reply, center, size)
+    if (size < 2_000 || JSON.stringify(readerProps(d, w, [])).length <= PROPS_LIMIT) return w
+    size = Math.floor(size * 0.75)
+  }
+}
+
+/** Moves the reader's window to center on `cursor` (an offset into the whole conversation). */
+async function moveWindow($: $, cursor: number) {
+  const d = await read($, draft)
+  const at = Math.max(0, Math.min(cursor, d.reply.length))
+  const w = fitWindow(d, at)
+  await update($, win, () => ({ ...w, cursor: at }))
+  await update($, draft, cur => ({ ...cur, rev: cur.rev + 1 }))
+}
 
 const isTypingInPane = (v: ReplyCommentsView) => v.mode === 'input' && v.via === 'pane'
 
@@ -196,6 +245,8 @@ export const register: Register = on => {
       overall: isKept ? d.overall : '',
       rev: d.rev + 1,
     }))
+    const opened = await read($, draft)
+    await update($, win, () => fitWindow(opened, opened.reply.length))
     await update($, view, () => NORMAL)
     await update($, legend, () => false)
 
@@ -239,8 +290,10 @@ export const register: Register = on => {
     if (!post) return {}
 
     const d = await read($, draft)
-    if (!same(d.comments, post.comments) || d.overall !== post.overall) {
-      await update($, draft, cur => ({ ...cur, comments: post.comments, overall: post.overall }))
+    const w = await read($, win)
+    const comments = mergeComments(d.comments, post.comments, w)
+    if (!same(d.comments, comments) || d.overall !== post.overall) {
+      await update($, draft, cur => ({ ...cur, comments, overall: post.overall }))
     }
     const was = await read($, view)
     if (!same(was, post.view)) {
@@ -261,6 +314,10 @@ export const register: Register = on => {
     if (post.action === 'clear') await clearDraft($)
     if (post.action === 'close') await closePane($)
     if (post.action === 'legend') await toggleLegend($)
+    if (post.action === 'window') {
+      const lastLine = d.reply.lastIndexOf('\n') + 1
+      await moveWindow($, post.edge === 'start' ? 0 : post.edge === 'end' ? lastLine : w.start + (post.at ?? 0))
+    }
 
     return {}
   })
@@ -274,6 +331,7 @@ export const register: Register = on => {
       const { Box, Text, Input, Client } = $.ui.resolve(e)
       const v = await read($, view)
       const keys = await read($, relay)
+      const w = await read($, win)
       const showLegend = await read($, legend)
       const drawn = await read($, keysDrawn)
       const mark = await read($, fieldMark)
@@ -286,7 +344,7 @@ export const register: Register = on => {
           <Client
             key="reader"
             module="./reader.tsx"
-            props={{ reply: d.reply, parts: d.parts, marks: d.marks, comments: d.comments, overall: d.overall, rev: d.rev, relay: keys }}
+            props={readerProps(d, w, keys)}
             width="100%"
             height={readerRows}
           />
@@ -329,10 +387,11 @@ export const register: Register = on => {
     }
 
     const { Box, Text, Markdown } = $.ui.resolve(e)
+    const w = await read($, win)
     return (
       <Box flexDirection="column">
         <Text dimColor>Selecting spans needs the terminal or the desktop app.</Text>
-        <Markdown text={d.reply} />
+        <Markdown text={d.reply.slice(w.start, w.end)} />
       </Box>
     )
   })

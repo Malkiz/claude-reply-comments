@@ -155,6 +155,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
 | An absolute `Box` is clipped to its site's region; the pointer on it goes to its parent | `BoxProps.position` | G |
 | `Markdown` is a leaf; a message can't be highlighted inside the engine's own drawing | `RenderElement` | B, C, F |
 | `$.session.messages()` has no message ids | `SessionMessage` | B, C |
+| A `Client`'s props may serialize to at most 100,000 characters; past that the whole pane tree is refused and an empty pane is drawn | `ClientElements` bounds; observed: "Client \"reader\" props serializes to more than 100000 characters" | F (handled in v0.4.1 by handing the reader a window of the conversation) |
 
 ## Related
 

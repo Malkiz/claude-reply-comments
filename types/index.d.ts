@@ -38,6 +38,17 @@ export type ReplyCommentsDraft = {
   rev: number
 }
 
+/**
+ * The span of the conversation the reader is handed (its props are bounded),
+ * and where its cursor goes when the span moves.
+ */
+export type ReplyCommentsWindow = {
+  start: number
+  end: number
+  /** The cursor, as an offset into the whole conversation; absent on a new annotation. */
+  cursor?: number
+}
+
 /** One key typed in the pane's key field, handed on to the reader. */
 export type ReplyCommentsRelayed = {
   seq: number
@@ -65,6 +76,7 @@ declare module 'claude-code' {
   interface PluginState {
     'reply-comments': {
       draft: ReplyCommentsDraft
+      window: ReplyCommentsWindow
       relay: ReplyCommentsRelayed[]
       view: ReplyCommentsView
       /** Whether the key legend is shown. */
