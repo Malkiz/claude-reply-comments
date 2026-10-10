@@ -1,0 +1,1 @@
+{ "name": "tcursor-spike", "version": "0.0.1", "description": "Spike: a vim cursor on the main transcript", "types": "./types/index.d.ts" }
