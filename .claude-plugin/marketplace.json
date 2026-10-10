@@ -1,6 +1,6 @@
 {
   "name": "claude-reply-comments",
-  "description": "claude-reply-comments: review the Claude Code conversation like a pull request",
+  "description": "claude-reply-comments: answer Claude point by point, right on the text",
   "owner": {
     "name": "Malkiz",
     "url": "https://github.com/Malkiz"

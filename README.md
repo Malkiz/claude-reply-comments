@@ -2,18 +2,18 @@
 
 ![Claude Code 2.1.286+](https://img.shields.io/badge/Claude_Code-2.1.286%2B-d97757) ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
-**Review the conversation like a pull request.** A Claude Code mod that lets you comment inline on any part of the conversation, the way a PR review or Notion comments work, and send every comment back to Claude as one prompt.
+**Answer Claude point by point, right on the text.** A Claude Code mod: select any part of the conversation, write a comment on it, and send all your comments to Claude as one prompt.
 
 > [!WARNING]
 > **100% vibe coded.** Claude wrote all of this, and I have not read a single line of the code. Use it at your own discretion. I am not responsible for any weird stuff that happens while you use this mod. Mods run unsandboxed inside Claude Code, so read the source before you install it. The [MIT license](LICENSE) applies: no warranty of any kind.
 
 ## Why
 
-A long reply usually gets one of two answers: a vague "looks good, but…", or copying the sentences you mean into your next prompt one at a time. Reviewing a pull request works better: you leave a comment on each line you have something to say about, then submit them all at once.
+Claude often writes long replies, with several points, bullet lists and questions in one message. Answering all of it is a pain: you restate or copy each part you mean into the prompt, then write your answer under it. It's much easier to select the part you mean and write your comment right on it. That's faster and more intuitive, and Claude gets each comment next to the exact text it's about.
 
 | You want to… | Without it | With `/annotate` |
 | --- | --- | --- |
-| push back on three points in a reply | Copy each passage into the prompt and write under it | Select each one, comment, press `s` |
+| answer several points or questions in one reply | Copy or restate each one in the prompt and write under it | Select each one, comment, press `s` |
 | answer something Claude said a while ago | Scroll the transcript, copy, paste | Jump there (`]m`, `/`, `gg`), select, comment |
 | revise a plan before Claude starts | Describe the step you mean in words | Comment on the step itself |
 | keep reading while Claude works | Wait for the turn to end | The pane fills in live as Claude writes |
