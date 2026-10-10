@@ -16,7 +16,7 @@ Claude often writes long replies, with several points, bullet lists and question
 | answer several points or questions in one reply | Copy or restate each one in the prompt and write under it | Select each one, comment, press `s` |
 | answer something Claude said a while ago | Scroll the transcript, copy, paste | Jump there (`]m`, `/`, `gg`), select, comment |
 | revise a plan before Claude starts | Describe the step you mean in words | Comment on the step itself |
-| keep reading while Claude works | Wait for the turn to end | The pane fills in live as Claude writes |
+| keep annotating while Claude works | Wait for the turn to end, or copy passages out as they appear | Open `/annotate` mid-turn and comment while new text keeps arriving |
 
 Claude gets one prompt that quotes each span with your comment under it, and says which message each comment is on when they aren't all on the last reply.
 
