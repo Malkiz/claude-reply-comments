@@ -3,5 +3,6 @@
   "version": "0.4.0",
   "description": "Comment inline on any part of the conversation, then send all comments to Claude as one prompt (/annotate)",
   "author": { "name": "Malkiz" },
+  "license": "MIT",
   "types": "./types/index.d.ts"
 }

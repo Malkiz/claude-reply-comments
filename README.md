@@ -30,10 +30,11 @@ The pane opens docked beside the transcript. Its width is the one Claude Code ke
 
 ## Install
 
-Load the folder as a plugin:
+Clone the repo and load the folder as a plugin:
 
 ```sh
-claude --plugin-dir ~/malkiz/github/claude-reply-comments
+git clone https://github.com/Malkiz/claude-reply-comments.git
+claude --plugin-dir ./claude-reply-comments
 ```
 
 To load it in every session, add the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`.
@@ -70,3 +71,7 @@ The vim engine is `hooks/vim.ts`: pure functions, tested in `tests/vim.test.ts`.
 - **Not planned:** storing comments across sessions (`$.store`). A conversation doesn't outlive its session; comments on lasting artifacts (a PR, a doc) belong on the artifact.
 
 Every layout tried on Claude Code 2.1.286 (a cursor on the main transcript, a thin key pane, a floating overlay, and the wide pane chosen), with the requirements and the API limits behind each, is in [`docs/layout-approaches.md`](docs/layout-approaches.md). The test mod is in `spikes/transcript-layouts/`, so the same tests can be rerun on a newer version.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
