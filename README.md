@@ -69,4 +69,4 @@ The vim engine is `hooks/vim.ts`: pure functions, tested in `tests/vim.test.ts`.
 - [ ] **Later, threads:** a comment, Claude's answer, a follow-up on the same spot, and a resolved state, as in a PR review.
 - **Not planned:** storing comments across sessions (`$.store`). A conversation doesn't outlive its session; comments on lasting artifacts (a PR, a doc) belong on the artifact.
 
-Other layouts were tried on Claude Code 2.1.286 (a cursor on the main transcript, a thin key pane, a floating overlay). The test mod is in `spikes/transcript-layouts/`, so the same tests can be rerun on a newer version.
+Every layout tried on Claude Code 2.1.286 (a cursor on the main transcript, a thin key pane, a floating overlay, and the wide pane chosen), with the requirements and the API limits behind each, is in [`docs/layout-approaches.md`](docs/layout-approaches.md). The test mod is in `spikes/transcript-layouts/`, so the same tests can be rerun on a newer version.

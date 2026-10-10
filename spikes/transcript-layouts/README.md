@@ -1,6 +1,6 @@
 # Spike: transcript layouts (Claude Code 2.1.286)
 
-Throwaway mod used on 2026-10-10 to test where an annotation UI can live. Not part of the mod; kept so the same tests can be rerun on a newer Claude Code. The findings are in the vault note `Projects/ClaudeReplyComments/layout-approaches.md`.
+Throwaway mod used on 2026-10-10 to test where an annotation UI can live. Not part of the mod; kept so the same tests can be rerun on a newer Claude Code. The findings are in [`docs/layout-approaches.md`](../../docs/layout-approaches.md).
 
 ```sh
 claude --plugin-dir spikes/transcript-layouts   # run in the fullscreen layout, 120+ columns
