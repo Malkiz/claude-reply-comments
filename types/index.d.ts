@@ -85,6 +85,8 @@ declare module 'claude-code' {
       keysDrawn: string
       /** The zero-width mark the field (comment, search, command) starts with, new for each input. */
       fieldMark: string
+      /** How many rows the field takes, grown as its text wraps. */
+      fieldRows: number
     }
   }
 }

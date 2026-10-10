@@ -309,6 +309,23 @@ describe('annotate', () => {
     await ui.unmount()
   })
 
+  test('the field grows as a long comment wraps, the reader giving way', async ($, on) => {
+    engine(on)
+    const { ui } = await openPane($, 'terminal', 15)
+    const heights = async () => {
+      const tree = (await ui.drawn()) as { children: { props: { height?: number } }[] }
+      return { reader: tree.children[0]!.props.height, field: tree.children[tree.children.length - 1]!.props.height }
+    }
+    await keys(ui, 'ciw')
+    expect(await heights()).toEqual({ reader: 14, field: 1 })
+    const found = (await findField(ui))!
+    await ui.input({ key: found.key, text: `${found.text}${'long words '.repeat(12)}`, kind: 'change' })
+    const grown = await heights()
+    expect(grown.field).toBeGreaterThan(1)
+    expect(grown.reader! + grown.field!).toBe(15)
+    await ui.unmount()
+  })
+
   test('a cancelled input leaves nothing behind in the next one', async ($, on) => {
     const sent = engine(on)
     const { ui } = await openPane($)

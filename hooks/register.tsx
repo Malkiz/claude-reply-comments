@@ -39,6 +39,7 @@ const view = atom({ plugin: 'reply-comments', key: 'view' } as const, NORMAL)
 const legend = atom({ plugin: 'reply-comments', key: 'legend' } as const, false)
 const keysDrawn = atom({ plugin: 'reply-comments', key: 'keysDrawn' } as const, MARKS[0]!)
 const fieldMark = atom({ plugin: 'reply-comments', key: 'fieldMark' } as const, MARKS[0]!)
+const fieldRows = atom({ plugin: 'reply-comments', key: 'fieldRows' } as const, 1)
 const win = atom({ plugin: 'reply-comments', key: 'window' } as const, { start: 0, end: 0 } as ReplyCommentsWindow)
 
 /** The field's key: one per mark, so each input gets a field of its own. */
@@ -134,6 +135,9 @@ async function moveWindow($: $, cursor: number) {
 
 const isTypingInPane = (v: ReplyCommentsView) => v.mode === 'input' && v.via === 'pane'
 
+/** Which field the pane draws for a view in input mode. */
+const fieldKindOf = (v: ReplyCommentsView) => (v.inputKind === 'comment' || v.inputKind === undefined ? v.target : v.inputKind)
+
 function refocus($: $, delay: number) {
   $.clock.after(delay, () => {
     void $.ui.open({ ...PANE_OPTIONS, focus: true }).catch(() => undefined)
@@ -208,6 +212,16 @@ async function onKeysTyped($: $, value: string) {
   })
   await relayKeys($, typed.map(key => ({ key })))
 }
+
+// The field grows as its text wraps, up to this many rows, the reader giving way.
+const MAX_FIELD_ROWS = 6
+
+/** The rows a field needs to show `length` characters, its label and its submit hint included. */
+const rowsFor = (label: string, length: number, columns: number) =>
+  Math.max(1, Math.min(MAX_FIELD_ROWS, Math.ceil((label.length + length + 12) / Math.max(10, columns))))
+
+// The pane body's width, as last drawn, for sizing the field as it is typed in.
+let bodyColumns = 80
 
 const FIELD_LABEL = {
   comment: 'Comment',
@@ -303,6 +317,7 @@ export const register: Register = on => {
         // left in it, and its cursor at the end of the text it starts with.
         const mark = MARKS[(MARKS.indexOf(await read($, fieldMark)) + 1) % MARKS.length]!
         await update($, fieldMark, () => mark)
+        await update($, fieldRows, () => rowsFor(FIELD_LABEL[fieldKindOf(post.view)], post.view.draft.length, bodyColumns))
         void $.ui.focus({ requestId: PANE, key: fieldKey(mark) }).catch(() => undefined)
       } else if (!isTypingInPane(post.view) && isTypingInPane(was)) {
         void $.ui.focus({ requestId: PANE, key: 'keys' }).catch(() => undefined)
@@ -336,8 +351,10 @@ export const register: Register = on => {
       const drawn = await read($, keysDrawn)
       const mark = await read($, fieldMark)
       const legendRows = showLegend ? legendLines(e.props.bodyColumns) : []
-      const readerRows = Math.max(3, e.props.scroll.bodyRows - legendRows.length - 1)
-      const fieldKind = v.inputKind === 'comment' || v.inputKind === undefined ? v.target : v.inputKind
+      bodyColumns = e.props.bodyColumns
+      const fieldKind = fieldKindOf(v)
+      const fieldHeight = isTypingInPane(v) ? await read($, fieldRows) : 1
+      const readerRows = Math.max(3, e.props.scroll.bodyRows - legendRows.length - fieldHeight)
 
       return (
         <Box flexDirection="column">
@@ -356,7 +373,7 @@ export const register: Register = on => {
               </Text>
             </Box>
           ))}
-          <Box height={1} overflow="hidden">
+          <Box height={fieldHeight} overflow="hidden">
             {isTypingInPane(v) ? (
               // One level deeper than the key field, so the surface draws it as a
               // field of its own: a reused one keeps the key field's cursor position.
@@ -367,6 +384,10 @@ export const register: Register = on => {
                   value={v.draft}
                   submitLabel={v.inputKind === 'comment' ? 'save' : 'go'}
                   autoFocus
+                  onInput={text => {
+                    const rows = rowsFor(FIELD_LABEL[fieldKind], unmarked(text).length, bodyColumns)
+                    void read($, fieldRows).then(was => (was === rows ? undefined : update($, fieldRows, () => rows)))
+                  }}
                   onSubmit={text => relayKeys($, [{ key: 'submit', text: unmarked(text) }])}
                 />
               </Box>
