@@ -318,6 +318,8 @@ export const register: Register = on => {
     await $.command.register({
       name: COMMAND,
       description: 'Comment on parts of the conversation, then send the comments to Claude as one prompt',
+      // runs at once mid-turn: the pane opens while Claude works and fills in live
+      immediate: true,
     })
 
     return next(e)

@@ -8,11 +8,11 @@ Requires Claude Code with mods (function hooks): 2.1.286 or later. Built for the
 
 `/annotate` opens a pane with the whole conversation and gives it the keyboard. The pane draws the conversation the way the transcript does: `❯` on your prompts, `⏺` on Claude's replies and tool calls (`Bash(ls)` with its first result line), markdown rendered. A plan Claude presents in plan mode is drawn in full, so you can comment on its steps (reject the plan dialog, then `/annotate`). It opens at the bottom with the cursor on Claude's last reply or plan, and you can move anywhere above it.
 
-The pane stays live: while it is open, new prompts, replies and tool calls appear in it as Claude works (a block at a time), without moving your cursor or selection. Click the prompt box to type there while the pane stays open. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
+`/annotate` opens at once even while Claude is working. The pane stays live: while it is open, new prompts, replies and tool calls appear in it as Claude works (a block at a time), without moving your cursor or selection. Click the prompt box to type there while the pane stays open. The keys are vim's. `?` shows or hides the full key list at the bottom of the pane. It starts hidden every time.
 
 | Group | Keys |
 | --- | --- |
-| Move | `h j k l` · `w b e ge` (`W B E gE`) · `0 ^ $` · `gg G` (`5G` goes to line 5) · `{ }` · `H M L` · `f t F T ; ,` · counts (`3j`, `2w`) · `ctrl-d ctrl-u ctrl-f ctrl-b ctrl-e ctrl-y` after clicking the reply |
+| Move | `h j k l` · `w b e ge` (`W B E gE`) · `0 ^ $` · `gg G` (`5G` goes to line 5) · `{ }` · `]m [m` next / previous message · `H M L` · `f t F T ; ,` · counts (`3j`, `2w`) · `ctrl-d ctrl-u ctrl-f ctrl-b ctrl-e ctrl-y` after clicking the reply |
 | Select | `v` · `V` · `o` swaps ends · text objects `iw aw iW aW is as ip ap i( a( i[ i{ i< i" i' i\``… |
 | Comment | `c` on a selection · `c{motion}` comments that span: `cip ciw ci( cc c$ c2e`… · `o` overall comment · `r` revise / `x` delete the comment under the cursor · `]c` `[c` next/prev comment |
 | Search | `/text` then Enter (smartcase) · `n N` |

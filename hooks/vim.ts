@@ -56,6 +56,8 @@ export type VimState = {
   flash?: string
   /** Comments held outside the text this state covers (a window of a longer conversation). */
   elsewhere?: number
+  /** Where each message of the conversation starts, for `]m` / `[m`. */
+  starts?: number[]
 }
 
 /** What the pane does on the reader's behalf. */
@@ -199,15 +201,17 @@ export function motion(s: VimState, keys: string, count: number | undefined, lay
       return i === undefined ? undefined : { to: i, kind: 'exclusive' }
     }
     case ']c':
-    case '[c': {
+    case '[c':
+    case ']m':
+    case '[m': {
+      // the next / previous comment, or the start of the next / previous
+      // message (`[m` from inside a message goes to its own start first)
+      const marks = keys[1] === 'c' ? s.comments.map(c => c.start) : (s.starts ?? [])
       let i = s.cursor
       for (let k = 0; k < n; k++) {
-        const hit =
-          keys === ']c'
-            ? s.comments.find(c => c.start > i)
-            : [...s.comments].reverse().find(c => c.start < i)
-        if (!hit) break
-        i = hit.start
+        const hit = keys[0] === ']' ? marks.find(at => at > i) : [...marks].reverse().find(at => at < i)
+        if (hit === undefined) break
+        i = hit
       }
       return i === s.cursor ? undefined : { to: i, kind: 'exclusive' }
     }

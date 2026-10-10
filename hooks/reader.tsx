@@ -81,15 +81,18 @@ function opening(props: ReaderProps, at: Layout): { cursor: number; top: number 
  * the cursor, selection and comments stay. A view that was showing the end
  * follows it down, as the transcript does, while the cursor stays on screen.
  */
-function grow(s: ReaderState, reply: string, at: Layout): ReaderState {
+function grow(s: ReaderState, reply: string, at: Layout, starts: number[]): ReaderState {
   const before = wrap(s.reply, at.columns)
   const after = wrap(reply, at.columns)
   const wasAtEnd = s.top + at.rows >= before.length
-  const grown = { ...s, reply }
+  const grown = { ...s, reply, starts }
   if (!wasAtEnd) return grown
   const top = Math.max(0, after.length - at.rows)
   return lineOf(after, s.cursor) >= top ? { ...grown, top } : grown
 }
+
+/** Where each message in the window starts (one cut by the window's start has none). */
+const startsOf = (props: ReaderProps) => (props.parts ?? []).filter(p => p.start >= 0).map(p => p.start)
 
 /**
  * Whether the reader should ask for another window: `gg` / `G` with more of
@@ -101,7 +104,12 @@ function windowAsk(prev: ReaderState, next: ReaderState, key: string, props: Rea
   if (key === 'g' && prev.pending === 'g' && props.before) return { edge: 'start' }
   if (key === 'G' && prev.pending === '' && props.after) return { edge: 'end' }
   const edge = next.reply.length * EDGE_SHARE
-  if (next.cursor === prev.cursor) return undefined
+  if (next.cursor === prev.cursor) {
+    // ]m / [m with no further message in this window: bring in the next piece
+    if (key === 'm' && prev.pending.endsWith(']') && props.after) return { at: next.reply.length - 1 }
+    if (key === 'm' && prev.pending.endsWith('[') && props.before) return { at: 0 }
+    return undefined
+  }
   if ((props.before && next.cursor < edge) || (props.after && next.cursor > next.reply.length - edge)) return { at: next.cursor }
   return undefined
 }
@@ -119,6 +127,7 @@ function fresh(props: ReaderProps, prev: ReaderState | undefined, isSameInstance
     top: open ? open.top : prev!.top,
     search: keep ? prev.search : '',
     elsewhere: props.elsewhere ?? 0,
+    starts: startsOf(props),
     relaySeq: Math.max(isSameInstance ? (prev?.relaySeq ?? 0) : 0, newestSeq(props.relay)),
     isDragging: false,
   }
@@ -141,7 +150,7 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
     live = fresh(props, isSameInstance ? live : surface.state, isSameInstance, layout)
     liveSurface = surface
   } else if (props.reply !== live.reply && props.reply.startsWith(live.reply)) {
-    live = grow(live, props.reply, layout)
+    live = grow(live, props.reply, layout, startsOf(props))
   }
 
   const commit = (next: ReaderState, action?: Action, ask?: Pick<ReaderPost, 'at' | 'edge'>) => {

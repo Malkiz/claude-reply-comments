@@ -188,6 +188,20 @@ describe('c as an operator', () => {
 describe('comments, search and commands', () => {
   const t = 'alpha beta gamma\n\nbeta again'
 
+  test(']m [m jump between messages, with counts', () => {
+    const convo = 'ask one\n\nreply one\nmore\n\nask two\n\nreply two'
+    const starts = [0, 9, 24, 33]
+    const s = { ...start(convo), starts }
+    expect(run(s, ']m').s.cursor).toBe(9)
+    expect(run(s, ']m]m').s.cursor).toBe(24)
+    expect(run(s, '3]m').s.cursor).toBe(33)
+    expect(run({ ...s, cursor: 33 }, ']m').s.cursor).toBe(33)
+    // [m from inside a message goes to its start, then to the one before
+    expect(run({ ...s, cursor: 15 }, '[m').s.cursor).toBe(9)
+    expect(run({ ...s, cursor: 15 }, '[m[m').s.cursor).toBe(0)
+
+  })
+
   test('o r x ]c [c', () => {
     let s = run(start(t), 'ciw').s
     s = submitInput(s, 'first', LAYOUT).state
