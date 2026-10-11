@@ -118,7 +118,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
 - **Costs:**
     - **Dock width:** a single value for all panes, kept in `~/.claude.json` as `pluginPanes.dockColumns`. Once the person has dragged it, the mod's `columns` request is ignored; the pane opens at whatever was last dragged.
     - **Maximum width:** the widest was a 95-column pane body in a 120-column terminal. The transcript keeps at least 24 columns, so a squeezed strip of the real conversation stays visible beside the pane.
-    - **Ctrl keys:** still need a click on the conversation, as in A.
+    - **Ctrl keys:** still need a click on the conversation, as in A (solved for four keys in v0.5.3, see the next-but-one section).
 - **Would improve it:**
     - A `columns` request that wins for this pane only.
     - A maximised or full-width pane mode.
@@ -139,6 +139,21 @@ Select specific parts of the conversation, attach a comment to each, and send th
     - A hook on transcript scrolling.
     - An overlay site that isn't attached to a transcript row.
 
+## Ctrl keys through keybinding buttons (v0.5.3)
+
+- **Problem:** the key field is an `Input`, and ctrl keys never reach one, so `ctrl-e` and friends worked only after a click on the reader.
+- **How:** the pane draws hidden `Button`s (a `Box` with `height={0}` and `overflow="hidden"`, placed after the reader) whose `action` names an engine keybinding action: `select:next`, `select:previous`, `select:pageDown`, `select:pageUp`. The person binds `ctrl+e` `ctrl+y` `ctrl+f` `ctrl+u` to them in the `PaneField` context of `~/.claude/keybindings.json`. Each press relays the key to the reader with `ctrl: true`.
+- **Why it works:**
+    - Ctrl-modified keys still run keybindings while a text field has focus (keybindings docs, "Text fields").
+    - A Button's `action` is pressed by the person's binding when it's a modified key in an active context and no engine handler of that action is mounted. No engine list is open while the pane has focus, so the `select:*` actions are free.
+    - `PaneField` is active only while a mod pane's field has the keyboard, so the prompt keeps its own `ctrl-e`.
+- **Costs:**
+    - While a comment is being typed the keys do nothing, and `ctrl-e` no longer jumps to the end of the comment field.
+    - **No `ctrl-d`:** Claude Code reserves it. Even after a click it returns the keyboard to the prompt (checked live, v0.5.5). `ctrl-f` (a whole screen down) takes its place.
+    - **No `ctrl-b`:** it's the usual tmux prefix and never reaches Claude Code inside tmux.
+- **Tested:** live on 2.1.287 in a detached tmux session (160×45): `ctrl-e` ×3 moved the cursor from line 1 to 4, `ctrl-f` to 39, `ctrl-u` back to 20.
+- **Would simplify it:** ctrl keys delivered to an `Input`, or a way for a mod to declare its own keybinding actions.
+
 ## API facts worth re-checking on a new version
 
 | Fact on 2.1.286 | Where it's stated | Blocks |
@@ -150,7 +165,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
 | A pane docks in fullscreen from 110 columns; no placement option | `Pane.placement`, `PaneOpenArgs` | E |
 | Dock width is one remembered value; a dragged width beats `columns` | `PaneOpenArgs.columns`, `~/.claude.json` `pluginPanes.dockColumns` | D, F |
 | A `Client` is one instance per plugin; it gets keys only after a click | `Client` element docs | A, B |
-| Ctrl keys never reach an `Input` | observed | A, F |
+| Ctrl keys never reach an `Input` (worked around with keybinding buttons, v0.5.3) | observed | A, F |
 | `ui.scroll` covers only `Pane` and `AbovePrompt` | `UiScrollComponent` | G |
 | An absolute `Box` is clipped to its site's region; the pointer on it goes to its parent | `BoxProps.position` | G |
 | `Markdown` is a leaf; a message can't be highlighted inside the engine's own drawing | `RenderElement` | B, C, F |
