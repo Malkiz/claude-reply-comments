@@ -84,7 +84,7 @@ More:
 - **Hooks**, each limited to the mod's own command and pane:
   - `session.start`: registers `/annotate`.
   - `command.run`: answers `/annotate` only, by opening the pane. Other commands pass through untouched.
-  - `ui.close`: refuses the close only for its own pane, and only when it comes from Esc inside the pane (see above). Any other close goes through.
+  - `ui.close`: for its own pane only, refuses a close that comes from Esc inside the pane, or that arrives while a selection, field or half-typed command is open (Esc cancels that first). Any other close goes through.
   - `ui.scroll`: turns the mouse wheel over its own pane into scrolling the conversation inside it.
   - `session.append`: notices new rows while the pane is open, so the pane can redraw. Every row passes through unchanged.
   - `ui.message`, `ui.render`: draw its pane and take what the pane reports back.
