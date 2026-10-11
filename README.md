@@ -4,10 +4,10 @@
 
 **Answer Claude point by point, right on the text.** A Claude Code mod: select any part of the conversation, write a comment on it, and send all your comments to Claude as one prompt.
 
+![Claude replies with a four-step plan and two questions. /annotate opens a pane beside the conversation; the cursor moves to step 1, step 3 and the first question, each gets a comment, and s sends all three as one prompt that Claude answers point by point.](docs/demo.gif)
+
 > [!WARNING]
 > **100% vibe coded.** Claude wrote all of this, and I have not read a single line of the code. Use it at your own discretion. I am not responsible for any weird stuff that happens while you use this mod. Mods run unsandboxed inside Claude Code, so read the source before you install it. The [MIT license](LICENSE) applies: no warranty of any kind.
-
-![Claude replies with a four-step plan and two questions. /annotate opens a pane beside the conversation; the cursor moves to step 1, step 3 and the first question, each gets a comment, and s sends all three as one prompt that Claude answers point by point.](docs/demo.gif)
 
 ## Why
 
