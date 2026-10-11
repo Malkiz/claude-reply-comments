@@ -9,6 +9,8 @@
 
 ## Why
 
+The conversation is a workspace you share with Claude. Both of you write in it and build on what's already there, but the prompt box only lets you add to the end. This mod lets you work with the conversation itself: point at any part of it and respond right there.
+
 Claude often writes long replies, with several points, bullet lists and questions in one message. Answering all of it is a pain: you restate or copy each part you mean into the prompt, then write your answer under it. It's much easier to select the part you mean and write your comment right on it. That's faster and more intuitive, and Claude gets each comment next to the exact text it's about.
 
 | You want to… | Without it | With `/annotate` |
