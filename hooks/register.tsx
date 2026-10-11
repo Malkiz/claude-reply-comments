@@ -491,7 +491,7 @@ export const register: Register = on => {
             height={readerRows}
           />
           <Box flexDirection="row" height={0} overflow="hidden">
-            {Object.entries(CTRL_ACTIONS).map(([key, action]) => (
+            {!isTypingInPane(v) && Object.entries(CTRL_ACTIONS).map(([key, action]) => (
               <Button key={'ctrl-' + key} label={'^' + key.toUpperCase()} plain action={action} onPress={() => relayKeys($, [{ key, ctrl: true }])} />
             ))}
           </Box>

@@ -438,6 +438,12 @@ describe('annotate', () => {
     await ui.press({ key: 'ctrl-u' })
     await ui.press({ key: 'ctrl-y' })
     expect(await status(ui, '· 2/')).toBeDefined()
+    // while a comment is typed the buttons are gone, so the field keeps its own ctrl-e
+    await keys(ui, 'ggVc')
+    expect(await findField(ui)).toBeDefined()
+    expect(await ui.find({ key: 'ctrl-e' })).toBeUndefined()
+    await field(ui, 'note')
+    expect(await ui.find({ key: 'ctrl-e' })).toBeDefined()
     await ui.unmount()
   })
 

@@ -148,7 +148,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
     - A Button's `action` is pressed by the person's binding when it's a modified key in an active context and no engine handler of that action is mounted. No engine list is open while the pane has focus, so the `select:*` actions are free.
     - `PaneField` is active only while a mod pane's field has the keyboard, so the prompt keeps its own `ctrl-e`.
 - **Costs:**
-    - While a comment is being typed the keys do nothing, and `ctrl-e` no longer jumps to the end of the comment field.
+    - **Comment field:** a binding takes the key before the field does, so with the buttons drawn, `ctrl-e` in the comment field stopped jumping to the end (checked live: "hello Xworld" instead of "hello worldX"). Since v0.5.6 the buttons aren't drawn while a comment is typed, and the field keeps its own `ctrl-e` (checked live).
     - **No `ctrl-d`:** Claude Code reserves it. Even after a click it returns the keyboard to the prompt (checked live, v0.5.5). `ctrl-f` (a whole screen down) takes its place.
     - **No `ctrl-b`:** it's the usual tmux prefix and never reaches Claude Code inside tmux.
 - **Tested:** live on 2.1.287 in a detached tmux session (160×45): `ctrl-e` ×3 moved the cursor from line 1 to 4, `ctrl-f` to 39, `ctrl-u` back to 20.
