@@ -52,8 +52,8 @@ describe('words', () => {
   })
 
   test('w stops on an empty line', () => {
-    expect(wordForward('ab\n\ncd', 0, false)).toBe(3)
-    expect(wordBackward('ab\n\ncd', 4, false)).toBe(3)
+    expect(wordForward('ab\n\nxy', 0, false)).toBe(3)
+    expect(wordBackward('ab\n\nxy', 4, false)).toBe(3)
     expect(wordEnd('ab cd', 1, false)).toBe(4)
     expect(wordEndBackward('ab cd', 3, false)).toBe(1)
   })
@@ -135,8 +135,8 @@ describe('selections', () => {
     expect(textObject(t, 7, true, ')')).toEqual({ start: 4, end: 17 })
     expect(textObject(t, 25, false, '"')).toEqual({ start: 23, end: 35 })
     expect(textObject(t, 0, false, '(')).toEqual({ start: 5, end: 16 })
-    expect(textObject('a (b)\nc (d)', 6, false, '(')).toEqual({ start: 9, end: 10 })
-    expect(textObject('a (b)\nc', 6, false, '(')).toBeUndefined()
+    expect(textObject('a (b)\nx (d)', 6, false, '(')).toEqual({ start: 9, end: 10 })
+    expect(textObject('a (b)\nx', 6, false, '(')).toBeUndefined()
     const { s } = run(start(t, 7), 'vi(')
     expect([s.anchor, s.cursor]).toEqual([5, 15])
     const p = run(start(t, 50), 'vip').s

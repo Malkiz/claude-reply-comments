@@ -253,7 +253,7 @@ async function toggleLegend($: EngineInterface) {
 /**
  * Ctrl keys never reach the key field, so each one the reader scrolls with is
  * a hidden Button pressed by an engine keybinding action. The person binds
- * the key to that action in the PaneField context of ~/.claude/keybindings.json
+ * the key to that action in the PaneField context of their keybindings file (see the README)
  * (the README has the block). These Select actions have no engine handler
  * mounted while the pane has the focus, so the binding presses the Button.
  * Ctrl+D is reserved by Claude Code and can never be bound.
