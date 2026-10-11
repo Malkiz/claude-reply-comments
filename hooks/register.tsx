@@ -265,8 +265,11 @@ export const CTRL_ACTIONS = {
   u: 'select:pageUp',
 } as const
 
+/** One key handed to the reader: a key typed in the pane, a field's text, or a ctrl key. */
+type RelayKey = { key: string; text?: string; ctrl?: true }
+
 /** Hands keys to the reader, which applies each relayed key once. */
-async function relayKeys($: EngineInterface, keys: { key: string; text?: string; ctrl?: true }[]) {
+async function relayKeys($: EngineInterface, keys: RelayKey[]) {
   if (keys.length === 0) return
   await update($, relay, list => {
     let seq = list.reduce((n, r) => Math.max(n, r.seq), 0)
