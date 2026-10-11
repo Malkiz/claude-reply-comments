@@ -9,9 +9,7 @@
 
 ## Why
 
-The conversation is a workspace you share with Claude. Both of you write in it and build on what's already there, but the prompt box only lets you add to the end. This mod lets you work with the conversation itself: point at any part of it and respond right there.
-
-Claude often writes long replies, with several points, bullet lists and questions in one message. Answering all of it is a pain: you restate or copy each part you mean into the prompt, then write your answer under it. It's much easier to select the part you mean and write your comment right on it. That's faster and more intuitive, and Claude gets each comment next to the exact text it's about.
+The conversation is a workspace you share with Claude, but two things in it are awkward: answering a long reply from Claude full of points, lists and questions, and coming back to something said a few turns ago. Both are awkward for the same reason: you can't point at a specific place in the text and discuss it there. The prompt box only adds to the end, so you copy or restate the part you mean and write under it. This mod lets you point. Select any part of the conversation and comment right on it, and Claude gets each comment next to the exact text it's about.
 
 | You want to… | Without it | With `/annotate` |
 | --- | --- | --- |
