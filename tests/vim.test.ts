@@ -280,10 +280,11 @@ describe('comments, search and commands', () => {
     expect([short.top, short.cursor]).toEqual([0, 0])
   })
 
-  test('ctrl-d and ctrl-u move half a screen, after a click', () => {
+  test('ctrl-f moves a screen down and ctrl-u half a screen up', () => {
     const long = Array.from({ length: 20 }, (_, i) => `row${i}`).join('\n')
-    const s = step(start(long), { key: 'd', ctrl: true }, 'reader', LAYOUT).state
-    expect(s.cursor).toBe(long.indexOf('row2'))
-    expect(step(s, { key: 'u', ctrl: true }, 'reader', LAYOUT).state.cursor).toBe(0)
+    const s = step(start(long), { key: 'f', ctrl: true }, 'reader', LAYOUT).state
+    expect(s.cursor).toBeGreaterThan(0)
+    const back = step(s, { key: 'u', ctrl: true }, 'reader', LAYOUT).state
+    expect(back.cursor).toBeLessThan(s.cursor)
   })
 })

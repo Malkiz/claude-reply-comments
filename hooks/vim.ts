@@ -353,14 +353,10 @@ function ctrlKey(s: VimState, key: string, layout: Layout): StepResult {
     return { state: scrolled({ ...moved, cursor: offsetAt(lines, row + rows, col) }, layout, lines) }
   }
   switch (key) {
-    case 'd':
-      return jump(half)
     case 'u':
       return jump(-half)
     case 'f':
       return jump(layout.rows)
-    case 'b':
-      return jump(-layout.rows)
     case 'e':
       return { state: scrollBy(s, layout, 1) }
     case 'y':
