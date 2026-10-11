@@ -31,7 +31,7 @@ const NORMAL: ReplyCommentsView = { mode: 'normal', via: 'reader', target: 'comm
 // The key field is redrawn with one of these after every keystroke, so it
 // never holds what was typed. Each draw takes the next mark, so a change can be
 // told apart from one typed before the field was cleared.
-const MARKS = ['​', '‌', '‍', '⁠']
+const MARKS = ['\u200b', '\u200c', '\u200d', '\u2060']
 
 const draft = atom({ plugin: 'reply-comments', key: 'draft' } as const, EMPTY)
 const relay = atom({ plugin: 'reply-comments', key: 'relay' } as const, [] as ReplyCommentsRelayed[])
@@ -47,7 +47,6 @@ export const fieldKey = (mark: string) => `field${MARKS.indexOf(mark)}`
 
 const unmarked = (text: string) => text.replace(/[\u200b\u200c\u200d\u2060]/g, '')
 
-type $ = EngineInterface
 
 // How much of each mark's field text has been handed on already.
 const consumed = new Map<string, number>()
@@ -139,7 +138,7 @@ let lastCursor = 0
  * parallel call's row, a compaction) moves the comments and the cursor across
  * and re-seeds the reader.
  */
-async function refresh($: $) {
+async function refresh($: EngineInterface) {
   isRefreshPending = false
   const panes = await $.ui.panes()
   if (!panes.some(p => p.id === PANE)) return
@@ -182,14 +181,14 @@ async function refresh($: $) {
   await update($, draft, () => ({ ...grown, rev: grown.rev + 1 }))
 }
 
-function scheduleRefresh($: $) {
+function scheduleRefresh($: EngineInterface) {
   if (isRefreshPending) return
   isRefreshPending = true
   $.clock.after(REFRESH_DELAY_MS, () => void refresh($).catch(() => undefined))
 }
 
 /** Moves the reader's window to center on `cursor` (an offset into the whole conversation). */
-async function moveWindow($: $, cursor: number) {
+async function moveWindow($: EngineInterface, cursor: number) {
   const d = await read($, draft)
   const at = Math.max(0, Math.min(cursor, d.reply.length))
   const w = fitWindow(d, at)
@@ -202,23 +201,23 @@ const isTypingInPane = (v: ReplyCommentsView) => v.mode === 'input' && v.via ===
 /** Which field the pane draws for a view in input mode. */
 const fieldKindOf = (v: ReplyCommentsView) => (v.inputKind === 'comment' || v.inputKind === undefined ? v.target : v.inputKind)
 
-function refocus($: $, delay: number) {
+function refocus($: EngineInterface, delay: number) {
   $.clock.after(delay, () => {
     void $.ui.open({ ...PANE_OPTIONS, focus: true }).catch(() => undefined)
   })
 }
 
-async function clearDraft($: $) {
+async function clearDraft($: EngineInterface) {
   await update($, draft, d => ({ ...d, comments: [], overall: '', rev: d.rev + 1 }))
   await update($, view, () => NORMAL)
 }
 
-async function closePane($: $) {
+async function closePane($: EngineInterface) {
   await update($, view, () => NORMAL)
   await $.ui.close({ id: PANE })
 }
 
-async function send($: $) {
+async function send($: EngineInterface) {
   const d = await read($, draft)
   if (d.comments.length === 0 && !d.overall.trim()) {
     $.ui.toast('reply-comments: nothing to send yet')
@@ -232,7 +231,7 @@ async function send($: $) {
   })
 }
 
-async function fill($: $) {
+async function fill($: EngineInterface) {
   const d = await read($, draft)
   if (d.comments.length === 0 && !d.overall.trim()) {
     $.ui.toast('reply-comments: nothing to put in the prompt yet')
@@ -247,7 +246,7 @@ async function fill($: $) {
   await clearDraft($)
 }
 
-async function toggleLegend($: $) {
+async function toggleLegend($: EngineInterface) {
   await update($, legend, shown => !shown)
 }
 
@@ -267,7 +266,7 @@ export const CTRL_ACTIONS = {
 } as const
 
 /** Hands keys to the reader, which applies each relayed key once. */
-async function relayKeys($: $, keys: { key: string; text?: string; ctrl?: true }[]) {
+async function relayKeys($: EngineInterface, keys: { key: string; text?: string; ctrl?: true }[]) {
   if (keys.length === 0) return
   await update($, relay, list => {
     let seq = list.reduce((n, r) => Math.max(n, r.seq), 0)
@@ -277,7 +276,7 @@ async function relayKeys($: $, keys: { key: string; text?: string; ctrl?: true }
 }
 
 /** The key field changed: hand on what was typed since it was last cleared, then clear it. */
-async function onKeysTyped($: $, value: string) {
+async function onKeysTyped($: EngineInterface, value: string) {
   const mark = MARKS.includes(value[0] ?? '') ? value[0]! : ''
   const body = [...(mark ? value.slice(1) : value)]
   const done = consumed.get(mark) ?? 0
@@ -467,7 +466,8 @@ export const register: Register = on => {
     const d = await read($, draft)
 
     if (e.surface === 'terminal' || e.surface === 'desktop') {
-      const { Box, Text, Input, Client, Button } = $.ui.resolve(e)
+      const els = $.ui.resolve(e)
+      const { Box, Text, Input, Button } = els
       const v = await read($, view)
       const keys = await read($, relay)
       const w = await read($, win)
@@ -483,7 +483,7 @@ export const register: Register = on => {
 
       return (
         <Box flexDirection="column">
-          <Client
+          <els.Client
             key="reader"
             module="./reader.tsx"
             props={readerProps(d, w, keys)}
