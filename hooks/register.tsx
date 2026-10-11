@@ -263,7 +263,7 @@ export const CTRL_ACTIONS = {
   e: 'select:next',
   y: 'select:previous',
   f: 'select:pageDown',
-  b: 'select:pageUp',
+  u: 'select:pageUp',
 } as const
 
 /** Hands keys to the reader, which applies each relayed key once. */
