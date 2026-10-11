@@ -7,6 +7,8 @@
 > [!WARNING]
 > **100% vibe coded.** Claude wrote all of this, and I have not read a single line of the code. Use it at your own discretion. I am not responsible for any weird stuff that happens while you use this mod. Mods run unsandboxed inside Claude Code, so read the source before you install it. The [MIT license](LICENSE) applies: no warranty of any kind.
 
+![Claude replies with a four-step plan and two questions. /annotate opens a pane beside the conversation; the cursor moves to step 1, step 3 and the first question, each gets a comment, and s sends all three as one prompt that Claude answers point by point.](docs/demo.gif)
+
 ## Why
 
 The conversation is a workspace you share with Claude, but two things in it are awkward: answering a long reply from Claude full of points, lists and questions, and coming back to something said a few turns ago. Both are awkward for the same reason: you can't point at a specific place in the text and discuss it there. The prompt box only adds to the end, so you copy or restate the part you mean and write under it. This mod lets you point. Select any part of the conversation and comment right on it, and Claude gets each comment next to the exact text it's about.
