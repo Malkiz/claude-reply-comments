@@ -24,7 +24,7 @@ Claude gets one prompt that quotes each span with your comment under it, and say
 
 ## Install
 
-Requires Claude Code with mods (function hooks), 2.1.286 or later. Tested on 2.1.286 in the terminal on macOS, inside tmux.
+Requires Claude Code with mods (function hooks), 2.1.286 or later, in the **fullscreen layout**: switch with `/tui fullscreen`, in a terminal at least 110 columns wide. Tested on 2.1.286 in the terminal on macOS, inside tmux.
 
 ```sh
 claude plugin marketplace add Malkiz/claude-reply-comments
@@ -96,6 +96,7 @@ More:
 
 - **Early access.** Mods are an early-access Claude Code surface that may change between releases. This version is checked against 2.1.286 with `claude plugin validate .` and `claude plugin test .`.
 - **Terminal on macOS.** Built and tested in the terminal on macOS. The desktop Code tab draws the same reader; mobile shows the conversation as plain markdown, without selection.
+- **Fullscreen layout only.** On the default layout, or a terminal narrower than 110 columns, Claude Code opens the pane inline above the prompt with room for only a line or two of the conversation. Switch with `/tui fullscreen`.
 - **One width for every pane.** Claude Code keeps a single dock width for all panes, and a width you've dragged wins over what a mod asks for.
 - **Ctrl keys need a binding or a click.** The pane catches keys through a text field, which ctrl keys don't reach. They need the keybindings from [Install](#install) or a click on the conversation; there is no `ctrl-d` or `ctrl-b`.
 - **Long conversations come in sections.** The reader is handed about 60,000 characters at a time (a mod's pane data is capped at 100,000 characters). The section moves by itself as the cursor nears its edge, and `gg` / `G` reach the very start and end, but line numbers, `:12` and `/` search cover the current section only.
