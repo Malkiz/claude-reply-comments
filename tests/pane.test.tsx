@@ -423,6 +423,23 @@ describe('annotate', () => {
     await ui.unmount()
   })
 
+  test('ctrl-e ctrl-y ctrl-f ctrl-b reach the reader through their keybinding buttons, no click', async ($, on) => {
+    engine(on)
+    const { ui } = await openPane($)
+    await keys(ui, 'gg')
+    expect(await status(ui, '· 1/')).toBeDefined()
+    // ctrl-e scrolls a line down; the cursor, on the top row, moves with it
+    await ui.press({ key: 'ctrl-e' })
+    expect(await status(ui, '· 2/')).toBeDefined()
+    // ctrl-f goes a screen down, ctrl-b back up
+    await ui.press({ key: 'ctrl-f' })
+    expect(await status(ui, '· 2/')).toBeUndefined()
+    await ui.press({ key: 'ctrl-b' })
+    await ui.press({ key: 'ctrl-y' })
+    expect(await status(ui, '· 2/')).toBeDefined()
+    await ui.unmount()
+  })
+
   test('Enter in the key field reaches the reader', async ($, on) => {
     engine(on)
     const { ui } = await openPane($)

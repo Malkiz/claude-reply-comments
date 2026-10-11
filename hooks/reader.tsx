@@ -184,7 +184,7 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
             ? { state: { ...s, ...escape(s) } }
             : r.key === 'wheel'
               ? { state: { ...s, ...scrollBy(s, layout, Number(r.text) || 0) } }
-            : apply(s, step(s, { key: r.key }, 'pane', layout))
+            : apply(s, step(s, r.ctrl ? { key: r.key, ctrl: true } : { key: r.key }, 'pane', layout))
       s = { ...result.state, relaySeq: r.seq }
       action = result.action ?? action
       ask = windowAsk(before, s, r.key, props) ?? ask

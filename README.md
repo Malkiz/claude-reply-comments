@@ -38,6 +38,24 @@ claude --plugin-dir ./claude-reply-comments
 
 To load the clone in every session, add its folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`.
 
+### Ctrl keys (optional)
+
+Ctrl keys don't reach the pane by themselves. To scroll with `ctrl-e` `ctrl-y` and page with `ctrl-f` `ctrl-b` right after `/annotate`, without clicking first, add this block to the `bindings` list in `~/.claude/keybindings.json` (`/keybindings` opens it):
+
+```json
+{
+  "context": "PaneField",
+  "bindings": {
+    "ctrl+e": "select:next",
+    "ctrl+y": "select:previous",
+    "ctrl+f": "select:pageDown",
+    "ctrl+b": "select:pageUp"
+  }
+}
+```
+
+The `PaneField` context is active only while a field in a mod's pane has the keyboard, so the prompt keeps its own `ctrl-e` and friends. Claude Code has nothing on these actions while the pane is open, so the keys press hidden buttons in the pane, and the mod scrolls. While you type a comment they do nothing, and `ctrl-e` no longer jumps to the end of the comment field. `ctrl-d` can't be bound: Claude Code reserves it, and in the pane it returns the keyboard to the prompt. Inside tmux, `ctrl-b` is often the tmux prefix and never reaches Claude Code.
+
 ## Use
 
 1. Type `/annotate`. A pane opens beside the transcript with the whole conversation, drawn the way the transcript draws it: `❯` on your prompts, `⏺` on Claude's replies, tool calls (`Bash(ls)` with its first result line) and plans, markdown rendered. It opens at the bottom, with the cursor on Claude's last reply, and it already has the keyboard.
@@ -50,7 +68,7 @@ To load the clone in every session, add its folder to `CLAUDE_CODE_PLUGIN_DIRS` 
 
 | Group | Keys |
 | --- | --- |
-| Move | `h j k l` · `w b e ge` (`W B E gE`) · `0 ^ $` · `gg G` (`5G` goes to line 5) · `{ }` · `]m [m` next / previous message · `H M L` · `f t F T ; ,` · counts (`3j`, `2w`) · `ctrl-d ctrl-u ctrl-f ctrl-b ctrl-e ctrl-y` after clicking the conversation |
+| Move | `h j k l` · `w b e ge` (`W B E gE`) · `0 ^ $` · `gg G` (`5G` goes to line 5) · `{ }` · `]m [m` next / previous message · `H M L` · `f t F T ; ,` · counts (`3j`, `2w`) · `ctrl-e ctrl-y ctrl-f ctrl-b` with the [keybindings](#ctrl-keys-optional) or after clicking the conversation · `ctrl-d ctrl-u` after clicking |
 | Select | `v` · `V` · `o` swaps ends · text objects `iw aw iW aW is as ip ap i( a( i[ i{ i< i" i' i\``… |
 | Comment | `c` on a selection · `c{motion}` comments that span: `cip ciw ci( cc c$ c2e`… · `o` overall comment · `r` revise / `x` delete the comment under the cursor · `]c [c` next / previous comment |
 | Search | `/text` then Enter (smartcase) · `n N` |
@@ -79,7 +97,7 @@ More:
 - **Early access.** Mods are an early-access Claude Code surface that may change between releases. This version is checked against 2.1.286 with `claude plugin validate .` and `claude plugin test .`.
 - **Terminal on macOS.** Built and tested in the terminal on macOS. The desktop Code tab draws the same reader; mobile shows the conversation as plain markdown, without selection.
 - **One width for every pane.** Claude Code keeps a single dock width for all panes, and a width you've dragged wins over what a mod asks for.
-- **Ctrl keys after a click.** The pane catches keys through a text field, which ctrl keys don't reach, so `ctrl-d` and friends work only after you click the conversation.
+- **Ctrl keys need a binding or a click.** The pane catches keys through a text field, which ctrl keys don't reach. `ctrl-e` `ctrl-y` `ctrl-f` `ctrl-b` work through [keybindings](#ctrl-keys-optional) you add. The rest, `ctrl-u` and `ctrl-d`, work only after you click the conversation, and Claude Code reserves `ctrl-d` for itself before that.
 - **Long conversations come in sections.** The reader is handed about 60,000 characters at a time (a mod's pane data is capped at 100,000 characters). The section moves by itself as the cursor nears its edge, and `gg` / `G` reach the very start and end, but line numbers, `:12` and `/` search cover the current section only.
 - **Plain-text rendering.** The mod renders markdown itself: headings, bold and code are styled, while tables and lists show as text. Tool calls show expanded where the transcript collapses them.
 

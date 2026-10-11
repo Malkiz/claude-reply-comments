@@ -251,12 +251,27 @@ async function toggleLegend($: $) {
   await update($, legend, shown => !shown)
 }
 
+/**
+ * Ctrl keys never reach the key field, so each one the reader scrolls with is
+ * a hidden Button pressed by an engine keybinding action. The person binds
+ * the key to that action in the PaneField context of ~/.claude/keybindings.json
+ * (the README has the block). These Select actions have no engine handler
+ * mounted while the pane has the focus, so the binding presses the Button.
+ * Ctrl+D is reserved by Claude Code and can never be bound.
+ */
+export const CTRL_ACTIONS = {
+  e: 'select:next',
+  y: 'select:previous',
+  f: 'select:pageDown',
+  b: 'select:pageUp',
+} as const
+
 /** Hands keys to the reader, which applies each relayed key once. */
-async function relayKeys($: $, keys: { key: string; text?: string }[]) {
+async function relayKeys($: $, keys: { key: string; text?: string; ctrl?: true }[]) {
   if (keys.length === 0) return
   await update($, relay, list => {
     let seq = list.reduce((n, r) => Math.max(n, r.seq), 0)
-    const added = keys.map(k => (k.text === undefined ? { seq: ++seq, key: k.key } : { seq: ++seq, key: k.key, text: k.text }))
+    const added = keys.map(k => ({ seq: ++seq, key: k.key, ...(k.text === undefined ? {} : { text: k.text }), ...(k.ctrl ? { ctrl: true as const } : {}) }))
     return [...list, ...added].slice(-40)
   })
 }
@@ -452,7 +467,7 @@ export const register: Register = on => {
     const d = await read($, draft)
 
     if (e.surface === 'terminal' || e.surface === 'desktop') {
-      const { Box, Text, Input, Client } = $.ui.resolve(e)
+      const { Box, Text, Input, Client, Button } = $.ui.resolve(e)
       const v = await read($, view)
       const keys = await read($, relay)
       const w = await read($, win)
@@ -475,6 +490,11 @@ export const register: Register = on => {
             width="100%"
             height={readerRows}
           />
+          <Box flexDirection="row" height={0} overflow="hidden">
+            {Object.entries(CTRL_ACTIONS).map(([key, action]) => (
+              <Button key={'ctrl-' + key} label={'^' + key.toUpperCase()} plain action={action} onPress={() => relayKeys($, [{ key, ctrl: true }])} />
+            ))}
+          </Box>
           {legendRows.map(row => (
             <Box flexDirection="row" height={1} overflow="hidden">
               <Text bold>{row.group.padEnd(GROUP_COLUMN)}</Text>

@@ -53,6 +53,8 @@ export type ReplyCommentsWindow = {
 export type ReplyCommentsRelayed = {
   seq: number
   key: string
+  /** Held with Ctrl: a key pressed through a keybinding (see CTRL_ACTIONS). */
+  ctrl?: true
   /** The text of a field, for the `submit` key; the rows, for the `wheel` key. */
   text?: string
 }

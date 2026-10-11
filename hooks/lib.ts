@@ -641,7 +641,7 @@ export function buildPrompt(
 
 /** The keys, by group, as the legend lists them. */
 export const LEGEND: readonly { group: string; text: string }[] = [
-  { group: 'Move', text: 'h j k l · w b e ge (W B E gE) · 0 ^ $ · gg G · { } · H M L · f t F T ; , · ]m [m next/prev message · counts (3j) · ctrl-d ctrl-u after a click' },
+  { group: 'Move', text: 'h j k l · w b e ge (W B E gE) · 0 ^ $ · gg G · { } · H M L · f t F T ; , · ]m [m next/prev message · counts (3j) · ctrl-e/y/f/b/d/u: README' },
   { group: 'Select', text: 'v V · o other end · text objects iw aw is ip ap i( a( i" a" … · Esc cancels' },
   { group: 'Comment', text: 'c on a selection · c{motion}: cip ciw cc c$ · o overall · r revise · x delete · ]c [c next/prev' },
   { group: 'Search', text: '/text then Enter · n N' },
