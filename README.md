@@ -132,6 +132,10 @@ claude plugin test .
 - [ ] **Later, threads:** a comment, Claude's answer, a follow-up on the same spot, and a resolved state, as in a PR review.
 - **Not planned:** storing comments across sessions. A conversation doesn't outlive its session; comments on lasting artifacts (a PR, a doc) belong on the artifact.
 
+## Privacy
+
+The mod collects nothing and sends nothing anywhere except the prompt you send to Claude. See the [privacy policy](PRIVACY.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
