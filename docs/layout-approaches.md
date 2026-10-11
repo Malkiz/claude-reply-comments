@@ -116,7 +116,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
     - The prompt names the message each comment is on when any is outside the last reply.
 - **Meets:** every requirement. "Looks like the main view" is approximate: the mod re-renders markdown itself, and tool calls show expanded where the main view collapses them ("Ran 1 shell command").
 - **Costs:**
-    - **Dock width:** a single value for all panes, kept in `~/.claude.json` as `pluginPanes.dockColumns`. Once the person has dragged it, the mod's `columns` request is ignored; the pane opens at whatever was last dragged.
+    - **Dock width:** a single value for all panes, kept in Claude Code's own global config as `pluginPanes.dockColumns`. Once the person has dragged it, the mod's `columns` request is ignored; the pane opens at whatever was last dragged.
     - **Maximum width:** the widest was a 95-column pane body in a 120-column terminal. The transcript keeps at least 24 columns, so a squeezed strip of the real conversation stays visible beside the pane.
     - **Ctrl keys:** still need a click on the conversation, as in A (solved for four keys in v0.5.3, see the next-but-one section).
 - **Would improve it:**
@@ -163,7 +163,7 @@ Select specific parts of the conversation, attach a comment to each, and send th
 | `$.ui.scroll` reveals a transcript row "only while this call answers the person's own input"; denied from `prompt.edit` | `UiScrollArgs` | C |
 | `prompt.edit` gets no Esc, `ctrl-d`, `ctrl-e`, Tab or Up | observed | C |
 | A pane docks in fullscreen from 110 columns; no placement option | `Pane.placement`, `PaneOpenArgs` | E |
-| Dock width is one remembered value; a dragged width beats `columns` | `PaneOpenArgs.columns`, `~/.claude.json` `pluginPanes.dockColumns` | D, F |
+| Dock width is one remembered value; a dragged width beats `columns` | `PaneOpenArgs.columns`; Claude Code's global config, `pluginPanes.dockColumns` | D, F |
 | A `Client` is one instance per plugin; it gets keys only after a click | `Client` element docs | A, B |
 | Ctrl keys never reach an `Input` (worked around with keybinding buttons, v0.5.3) | observed | A, F |
 | `ui.scroll` covers only `Pane` and `AbovePrompt` | `UiScrollComponent` | G |

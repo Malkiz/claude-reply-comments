@@ -43,7 +43,7 @@ const fieldRows = atom({ plugin: 'reply-comments', key: 'fieldRows' } as const, 
 const win = atom({ plugin: 'reply-comments', key: 'window' } as const, { start: 0, end: 0 } as ReplyCommentsWindow)
 
 /** The field's key: one per mark, so each input gets a field of its own. */
-export const fieldKey = (mark: string) => `field${MARKS.indexOf(mark)}`
+export const fieldKey = (mark: string) => 'field' + MARKS.indexOf(mark)
 
 const unmarked = (text: string) => text.replace(/[\u200b\u200c\u200d\u2060]/g, '')
 

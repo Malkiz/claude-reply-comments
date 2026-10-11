@@ -81,6 +81,13 @@ More:
 - **The prompt it sends** (`$.prompt.submit`, only when you press `s` or type `:w`) contains exactly: an opening line ("I left N comments on parts of …"), then for each comment the text you selected, quoted, with the comment you typed under it and which message it's on, then your overall comment if you wrote one. Nothing else from the conversation goes into it. It goes to Claude in this session, like a prompt you type; the mod sends nothing anywhere else.
 - **Commands:** it registers `/annotate` and answers it by opening the pane. It doesn't run slash commands. (The tests in `tests/` run `/annotate` inside Claude Code's test kit; they aren't part of the mod at runtime.)
 - **Escape key:** Esc in the pane arrives as a request to close it, which the mod refuses so that Esc can leave visual mode or cancel a field; `q` closes the pane. It touches no permission prompt or setting.
+- **Hooks**, each limited to the mod's own command and pane:
+  - `session.start`: registers `/annotate`.
+  - `command.run`: answers `/annotate` only, by opening the pane. Other commands pass through untouched.
+  - `ui.close`: refuses the close only for its own pane, and only when it comes from Esc inside the pane (see above). Any other close goes through.
+  - `ui.scroll`: turns the mouse wheel over its own pane into scrolling the conversation inside it.
+  - `session.append`: notices new rows while the pane is open, so the pane can redraw. Every row passes through unchanged.
+  - `ui.message`, `ui.render`: draw its pane and take what the pane reports back.
 - **Keeps:** the draft and the pane's state in session state (`$.state`), gone when the session ends. Nothing is stored across sessions.
 - **Doesn't:** read or write files, run commands, call a model or make network requests.
 - **Takes over:** its own pane only. The transcript, the prompt box and every other component are left as they are.
