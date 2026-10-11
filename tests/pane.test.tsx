@@ -195,6 +195,23 @@ describe('lib', () => {
     ])
   })
 
+  test('pasted text keeps its words and loses its wrapper tags', () => {
+    const convo = conversation([
+      { role: 'user', text: 'my draft:\n\n<pasted_content id="4f80">\nhello there\n</pasted_content id="4f80">\n', toolUses: [] },
+      { role: 'assistant', text: 'ok', toolUses: [] },
+    ])
+    expect(convo.text).not.toContain('pasted_content')
+    expect(convo.text).toContain('hello there')
+  })
+
+  test('a selection across two messages names both', () => {
+    const convo = conversation(MESSAGES)
+    const start = convo.text.indexOf('the plan')
+    const end = convo.text.indexOf('First paragraph') + 5
+    const text = buildPrompt([{ start, end, quote: convo.text.slice(start, end), text: 'both' }], '', convo)
+    expect(text).toContain('On this part of my message "explain the plan" and your last reply:')
+  })
+
   test('markdown is drawn without its markers, the styles kept beside the text', () => {
     const r = renderMarkdown('## Plan\nUse **bold** and `code`.\n```ts\nconst x = 1\n```\nend')
     expect(r.text).toBe('Plan\nUse bold and code.\nconst x = 1\nend')

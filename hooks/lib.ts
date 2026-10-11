@@ -21,7 +21,12 @@ type ToolUseLike = { tool: string; input?: Record<string, unknown>; text?: strin
 export type Conversation = { text: string; parts: ReplyCommentsPart[]; marks: ReplyCommentsMark[] }
 
 /** What the engine adds to a message that the person never wrote. */
-const clean = (text: string) => text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()
+const clean = (text: string) =>
+  text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    // the tags around pasted text go; the pasted text stays
+    .replace(/<\\?\/?pasted_content(?:\s[^>]*)?>/g, '')
+    .trim()
 
 /** A slash command's own record (`<command-name>…`): not a message to annotate. */
 const isCommandRecord = (text: string) => /^<(command-|local-command-)/.test(text)
@@ -593,7 +598,16 @@ function snippet(text: string): string {
 
 /** Which message a comment is on, as the prompt names it to Claude. */
 function whereIs(c: ReplyComment, text: string, parts: readonly ReplyCommentsPart[]): string {
-  const at = parts.findIndex(p => c.start >= p.start && c.start <= p.end)
+  const first = parts.findIndex(p => c.start >= p.start && c.start <= p.end)
+  const last = parts.findIndex(p => c.end - 1 >= p.start && c.end - 1 <= p.end)
+  if (first < 0) return 'the conversation'
+  if (last <= first) return placeOf(first, text, parts)
+  // a selection across messages names where it starts and where it ends
+  return `${placeOf(first, text, parts)} ${last === first + 1 ? 'and' : 'through'} ${placeOf(last, text, parts)}`
+}
+
+/** How the prompt names one message to Claude. */
+function placeOf(at: number, text: string, parts: readonly ReplyCommentsPart[]): string {
   const part = parts[at]
   if (!part) return 'the conversation'
   if (part.role === 'user') return `my message "${snippet(text.slice(part.start, part.end))}"`
