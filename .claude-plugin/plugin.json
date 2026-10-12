@@ -1,6 +1,6 @@
 {
   "name": "reply-comments",
-  "version": "0.5.13",
+  "version": "0.5.14",
   "description": "Comment inline on any part of the conversation, then send all comments to Claude as one prompt (/annotate)",
   "author": {
     "name": "Malkiz"
