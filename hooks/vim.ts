@@ -330,6 +330,9 @@ const NAMED: Record<string, string> = {
   return: '\r', enter: '\r',
 }
 
+/** Keys the surface names rather than types; typed text, even a pasted word, is anything else. */
+const NAMED_KEYS = new Set(['up', 'down', 'left', 'right', 'tab', 'escape', 'pageup', 'pagedown', 'home', 'end', 'insert', 'delete', 'backspace', 'return', 'enter', 'space'])
+
 function typeInPlace(s: VimState, ev: KeyIn, layout: Layout): StepResult {
   const { key } = ev
   if (ev.ctrl && key === 'u') return { state: { ...s, draft: '' } }
@@ -339,7 +342,7 @@ function typeInPlace(s: VimState, ev: KeyIn, layout: Layout): StepResult {
     return { state: { ...s, draft: [...s.draft].slice(0, -1).join('') } }
   }
   if (key === 'space') return { state: { ...s, draft: `${s.draft} ` } }
-  if (ev.ctrl || ev.meta || key.length > 1 && /^[a-z]+$/.test(key)) return { state: s }
+  if (ev.ctrl || ev.meta || NAMED_KEYS.has(key)) return { state: s }
   return { state: { ...s, draft: s.draft + key.replace(/[\r\n\t]+/g, ' ') } }
 }
 

@@ -541,6 +541,37 @@ describe('annotate', () => {
     await ui.unmount()
   })
 
+  test('mouse: a new drag while commenting moves the comment there; a click leaves it', async ($, on) => {
+    const sent = engine(on, [
+      { role: 'user', text: 'q', toolUses: [] },
+      { role: 'assistant', text: REPLY, toolUses: [] },
+    ])
+    const { ui } = await openPane($)
+    const drag = async (from: number, to: number, y: number) => {
+      await ui.pointer({ type: 'down', x: from, y, button: 'left', in: 'reader' })
+      await ui.pointer({ type: 'move', x: to, y, button: 'left', in: 'reader' })
+      await ui.pointer({ type: 'up', x: to, y, button: 'left', in: 'reader' })
+    }
+    await drag(8, 16, 2)
+    expect(await status(ui, 'COMMENT')).toBeDefined()
+    // changed their mind: drag over "Second" on the next paragraph
+    await drag(2, 7, 4)
+    expect(await status(ui, 'COMMENT')).toBeDefined()
+    for (const key of ['o', 'k']) await ui.key({ key, in: 'reader' })
+    await ui.key({ key: 'return', in: 'reader' })
+    // a click while commenting drops that comment, as Esc does
+    await drag(8, 16, 2)
+    expect(await status(ui, 'COMMENT')).toBeDefined()
+    await ui.pointer({ type: 'down', x: 5, y: 6, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'up', x: 5, y: 6, button: 'left', in: 'reader' })
+    expect(await status(ui, 'COMMENT')).toBeUndefined()
+    await keys(ui, 's')
+    expect(sent.submitted).toHaveLength(1)
+    expect(sent.submitted[0]).toContain('> Second\n\nok')
+    expect(sent.submitted[0]).not.toContain('> paragraph')
+    await ui.unmount()
+  })
+
   test('unsent comments survive closing and reopening; :clear drops them', async ($, on) => {
     const sent = engine(on)
     const first = await openPane($)

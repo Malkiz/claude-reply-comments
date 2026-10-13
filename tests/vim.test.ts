@@ -280,6 +280,13 @@ describe('comments, search and commands', () => {
     expect([short.top, short.cursor]).toEqual([0, 0])
   })
 
+  test('typing in place takes a whole word that arrives as one key (a paste), and drops named keys', () => {
+    const s = { ...start('some reply text'), mode: 'input' as const, inputKind: 'comment' as const, via: 'reader' as const, draft: '' }
+    const pasted = step(s, { key: 'hello' }, 'reader', LAYOUT).state
+    expect(pasted.draft).toBe('hello')
+    expect(step(pasted, { key: 'tab' }, 'reader', LAYOUT).state.draft).toBe('hello')
+  })
+
   test('ctrl-f moves a screen down and ctrl-u half a screen up', () => {
     const long = Array.from({ length: 20 }, (_, i) => `row${i}`).join('\n')
     const s = step(start(long), { key: 'f', ctrl: true }, 'reader', LAYOUT).state

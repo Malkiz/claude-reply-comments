@@ -211,8 +211,14 @@ export default Reader
 // ---------- mouse ----------
 
 export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderState {
-  if (!s.reply || s.mode === 'input') return s
+  if (!s.reply) return s
   if (event.button !== undefined && event.button !== 'left') return s
+  // A press while a comment (or a search or command) is open drops it, as Esc
+  // does: a click just leaves it, a drag selects a new span to comment on.
+  if (s.mode === 'input') {
+    if (event.type !== 'down' || event.y >= layout.rows) return s
+    s = { ...s, ...escape(s) }
+  }
 
   const lines = wrap(s.reply, layout.columns)
   const rowAt = (y: number) => s.top + Math.max(-1, Math.min(layout.rows, y))
