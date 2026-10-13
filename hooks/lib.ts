@@ -15,7 +15,7 @@ type MessageLike = {
 }
 
 /** A tool call as `$.session.messages()` summarises it, the fields read here. */
-type ToolUseLike = { tool: string; input?: Record<string, unknown>; text?: string; isError?: true }
+type ToolUseLike = { tool: string; input?: Record<string, unknown>; result?: unknown; text?: string; isError?: true }
 
 /** The conversation as one text, where each message sits in it, and how its spans are styled. */
 export type Conversation = { text: string; parts: ReplyCommentsPart[]; marks: ReplyCommentsMark[] }
@@ -102,10 +102,42 @@ function planBlock(use: ToolUseLike, plan: string): Block {
   return { role: 'plan', text, marks, isError: use.isError }
 }
 
+const isPlanFile = (path: string) => /[\\/]plans[\\/][^\\/]+\.md$/.test(path)
+
+/**
+ * The files Claude wrote in this conversation, as its Write and Edit calls
+ * left them, and which one was the plan file last.
+ *
+ * `ExitPlanMode` reaches a mod with an empty input. The plan it presents is
+ * the plan file (`~/.claude/plans/*.md`) Claude wrote just before, so the
+ * conversation replays those writes to know what each plan said then.
+ */
+type Written = { files: Map<string, string>; planPath?: string }
+
+function noteWrite(w: Written, use: ToolUseLike) {
+  const input = use.input ?? {}
+  const path = input.file_path
+  if (typeof path !== 'string' || use.isError) return
+  if (use.tool === 'Write' && typeof input.content === 'string') w.files.set(path, input.content)
+  else if (use.tool === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+    const before = w.files.get(path)
+    if (before === undefined) return
+    w.files.set(path, input.replace_all === true ? before.split(input.old_string).join(input.new_string) : before.replace(input.old_string, () => input.new_string as string))
+  } else return
+  if (isPlanFile(path)) w.planPath = path
+}
+
+/** The text of the plan an `ExitPlanMode` call presented, wherever this version keeps it. */
+function planOf(use: ToolUseLike, w: Written): string | undefined {
+  const result = (typeof use.result === 'object' && use.result !== null ? use.result : {}) as Record<string, unknown>
+  const found = [use.input?.plan, result.plan, typeof result.filePath === 'string' ? w.files.get(result.filePath) : undefined, w.planPath && w.files.get(w.planPath)]
+  return found.find((p): p is string => typeof p === 'string' && p.trim() !== '')
+}
+
 /** A tool call's row, as the transcript names it: `Bash(ls -la)`, and its result's first line. */
-function toolBlock(use: ToolUseLike): Block {
-  const plan = use.tool === 'ExitPlanMode' ? use.input?.plan : undefined
-  if (typeof plan === 'string' && plan.trim()) return planBlock(use, plan)
+function toolBlock(use: ToolUseLike, w: Written): Block {
+  const plan = use.tool === 'ExitPlanMode' ? planOf(use, w) : undefined
+  if (plan) return planBlock(use, plan)
   const input = use.input ?? {}
   const key = TOOL_ARGS.find(k => typeof input[k] === 'string') ?? Object.keys(input).find(k => typeof input[k] === 'string')
   const arg = key ? String(input[key]).replace(/\s+/g, ' ').trim() : ''
@@ -127,11 +159,15 @@ function toolBlock(use: ToolUseLike): Block {
  */
 export function conversation(messages: readonly MessageLike[]): Conversation {
   const blocks: Block[] = []
+  const written: Written = { files: new Map() }
   for (const m of messages) {
     const text = clean(m.text)
     if (m.role === 'assistant') {
       if (text) blocks.push({ role: 'assistant', ...renderMarkdown(text) })
-      for (const use of m.toolUses ?? []) blocks.push(toolBlock(use))
+      for (const use of m.toolUses ?? []) {
+        noteWrite(written, use)
+        blocks.push(toolBlock(use, written))
+      }
       continue
     }
     if (text && !isCommandRecord(text)) blocks.push({ role: 'user', ...renderMarkdown(text) })

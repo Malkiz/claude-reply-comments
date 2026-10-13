@@ -21,6 +21,19 @@ const MESSAGES: SessionMessage[] = [
   { role: 'assistant', text: REPLY, toolUses: [] },
 ]
 
+const PLAN_PATH = '/u/.claude/plans/add-a-flag.md'
+const PLAN_MESSAGES: SessionMessage[] = [
+  { role: 'user', text: 'plan it', toolUses: [] },
+  {
+    role: 'assistant',
+    text: '',
+    toolUses: [
+      { tool_use_id: 'w1', tool: 'Write', input: { file_path: PLAN_PATH, content: '# Add a flag\n\n1. **Parse** it\n2. Print it' }, text: 'File created successfully' } as never,
+      { tool_use_id: 'p1', tool: 'ExitPlanMode', input: {}, result: 'User rejected tool use', text: 'User rejected tool use', isError: true } as never,
+    ],
+  },
+]
+
 const ANNOTATE = {
   command: 'annotate',
   args: '',
@@ -146,26 +159,36 @@ describe('lib', () => {
   })
 
   test('a plan Claude presents is drawn in full and named in the prompt', () => {
-    const convo = conversation([
-      { role: 'user', text: 'plan it', toolUses: [] },
-      {
-        role: 'assistant',
-        text: '',
-        toolUses: [
-          {
-            tool: 'ExitPlanMode',
-            input: { plan: '# Add a flag\n\n1. **Parse** it\n2. Print it', planFilePath: '/p.md' },
-            text: 'rejected',
-          },
-        ],
-      },
-    ])
-    expect(convo.text).toBe('plan it\n\nPlan\nAdd a flag\n\n1. Parse it\n2. Print it\n⎿  rejected')
-    expect(convo.parts.map(p => p.role)).toEqual(['user', 'plan'])
+    // as $.session.messages() hands it over on 2.1.287: ExitPlanMode's input is empty,
+    // and the plan is the plan file Claude wrote just before
+    const convo = conversation(PLAN_MESSAGES)
+    expect(convo.text).toBe(
+      'plan it\n\nWrite(/u/.claude/plans/add-a-flag.md)\n⎿  File created successfully\n\nPlan\nAdd a flag\n\n1. Parse it\n2. Print it\n⎿  User rejected tool use',
+    )
+    expect(convo.parts.map(p => p.role)).toEqual(['user', 'tool', 'plan'])
     const at = convo.text.indexOf('Print it')
     expect(buildPrompt([{ start: at, end: at + 8, quote: 'Print it', text: 'how?' }], '', convo)).toContain(
       '1. On this part of your plan:\n> Print it',
     )
+  })
+
+  test('each plan shows the plan file as it was then: an Edit revises it, an approved plan carries its own text', () => {
+    const convo = conversation([
+      ...PLAN_MESSAGES,
+      { role: 'user', text: 'also log it', toolUses: [] },
+      {
+        role: 'assistant',
+        text: '',
+        toolUses: [
+          { tool: 'Edit', input: { file_path: PLAN_PATH, old_string: '2. Print it', new_string: '2. Print it\n3. Log it' }, text: 'updated' },
+          { tool: 'ExitPlanMode', input: {}, result: { plan: '# Add a flag\n\n1. Parse it\n2. Print it\n3. Log it', filePath: PLAN_PATH }, text: 'User approved' },
+        ],
+      },
+    ])
+    const plans = convo.parts.filter(p => p.role === 'plan').map(p => convo.text.slice(p.start, p.end))
+    expect(plans).toHaveLength(2)
+    expect(plans[0]).not.toContain('Log it')
+    expect(plans[1]).toContain('3. Log it')
   })
 
   test('comments follow the text when a parallel tool call result lands above the newest row', () => {
@@ -281,6 +304,12 @@ describe('lib', () => {
 })
 
 describe('annotate', () => {
+  test('opens on a plan when the turn has no reply text', async ($, on) => {
+    engine(on, PLAN_MESSAGES)
+    const ran = await $.command.run(ANNOTATE)
+    expect(JSON.stringify(ran)).not.toContain('no reply')
+  })
+
   test('says so when there is no reply yet', async ($, on) => {
     engine(on, [{ role: 'user', text: 'hello', toolUses: [] }])
     const ran = await $.command.run(ANNOTATE)
