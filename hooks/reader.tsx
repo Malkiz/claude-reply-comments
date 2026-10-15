@@ -3,7 +3,7 @@ import type { ClientModule, ClientPointerEvent, ClientSurface } from 'claude-cod
 import type { ReplyComment, ReplyCommentsMark, ReplyCommentsPart, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
 import { commentAt, lastClaudePart, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
 import type { Line } from './lib'
-import { caretOf, escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
+import { buttonAction, caretOf, escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
 import type { Action, Layout, StepResult, VimState } from './vim'
 
 /** What the hooks module hands the reader. */
@@ -40,7 +40,7 @@ export type ReaderPost = {
   cursor?: number
 }
 
-type ReaderState = VimState & { relaySeq: number; isDragging: boolean }
+type ReaderState = VimState & { relaySeq: number; isDragging: boolean; mouse?: true }
 
 /** The status row under the text. */
 const FOOTER_ROWS = 1
@@ -160,7 +160,10 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
   const commit = (next: ReaderState, action?: Action, ask?: Pick<ReaderPost, 'at' | 'edge'>) => {
     live = next
     surface.setState(next)
-    const data: ReaderPost = { comments: next.comments, overall: next.overall, view: viewOf(next), cursor: next.cursor }
+    const view = viewOf(next)
+    if (next.mouse) view.mouse = true
+    if (next.mode === 'normal' && commentAt(next.comments, next.cursor) >= 0) view.onComment = true
+    const data: ReaderPost = { comments: next.comments, overall: next.overall, view, cursor: next.cursor }
     if (action) data.action = action
     else if (ask && askedRev !== next.rev) {
       askedRev = next.rev
@@ -180,6 +183,8 @@ const Reader: ClientModule<ReaderProps, ReaderState> = (props, surface) => {
       const result =
         r.key === 'submit'
           ? apply(s, submitInput(s, r.text ?? '', layout))
+          : r.key === 'button'
+            ? apply(s, buttonAction(s, r.text ?? '', layout))
           : r.key === 'escape'
             ? { state: { ...s, ...escape(s) } }
             : r.key === 'wheel'
@@ -213,6 +218,8 @@ export default Reader
 export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderState {
   if (!s.reply) return s
   if (event.button !== undefined && event.button !== 'left') return s
+  // the first press tells the pane a mouse is in use, and it shows its buttons
+  if (event.type === 'down' && !s.mouse) s = { ...s, mouse: true }
   // A press while a comment (or a search or command) is open drops it, as Esc
   // does: a click just leaves it, a drag selects a new span to comment on.
   // a click on a draft typed in place puts the caret there

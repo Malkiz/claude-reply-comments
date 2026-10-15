@@ -552,6 +552,48 @@ describe('annotate', () => {
     await ui.unmount()
   })
 
+  test('mouse: buttons appear after the first press and cover every basic action', async ($, on) => {
+    const sent = engine(on, [
+      { role: 'user', text: 'q', toolUses: [] },
+      { role: 'assistant', text: REPLY, toolUses: [] },
+    ])
+    const { ui } = await openPane($)
+    expect(await ui.find({ key: 'mouse-send' })).toBeUndefined()
+    const drag = async (from: number, to: number, y: number) => {
+      await ui.pointer({ type: 'down', x: from, y, button: 'left', in: 'reader' })
+      await ui.pointer({ type: 'move', x: to, y, button: 'left', in: 'reader' })
+      await ui.pointer({ type: 'up', x: to, y, button: 'left', in: 'reader' })
+    }
+    // a drag opens a comment: Save and Cancel
+    await drag(8, 16, 2)
+    expect(await ui.find({ key: 'mouse-save' })).toBeDefined()
+    expect(await ui.find({ key: 'mouse-send' })).toBeUndefined()
+    await ui.press({ key: 'mouse-cancel' })
+    expect(await status(ui, 'COMMENT')).toBeUndefined()
+    // again, typed in place, and Save
+    await drag(8, 16, 2)
+    for (const key of ['o', 'k']) await ui.key({ key, in: 'reader' })
+    await ui.press({ key: 'mouse-save' })
+    expect(await status(ui, '1 comment')).toBeDefined()
+    // a click on the comment: Revise and Delete
+    await ui.pointer({ type: 'down', x: 10, y: 2, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'up', x: 10, y: 2, button: 'left', in: 'reader' })
+    expect(await ui.find({ key: 'mouse-revise' })).toBeDefined()
+    await ui.press({ key: 'mouse-revise' })
+    await field(ui, 'fine')
+    // an overall comment, typed in the pane's field, saved with the button
+    await ui.press({ key: 'mouse-overall' })
+    const f = await findField(ui)
+    await ui.input({ key: f!.key, text: 'all good', kind: 'change' })
+    await ui.press({ key: 'mouse-save' })
+    expect(await status(ui, '1 comment + overall')).toBeDefined()
+    await ui.press({ key: 'mouse-send' })
+    expect(sent.submitted).toHaveLength(1)
+    expect(sent.submitted[0]).toContain('> paragraph\n\nfine')
+    expect(sent.submitted[0]).toContain('all good')
+    await ui.unmount()
+  })
+
   test('mouse: drag across a span opens a comment on it', async ($, on) => {
     // short enough to fit: the prompt on row 0, the reply from row 2, text past the gutter
     const sent = engine(on, [

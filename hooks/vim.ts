@@ -308,6 +308,25 @@ function runCommand(s: VimState, text: string, layout: Layout): StepResult {
 }
 
 /** The text a pane field (or the reader, in place) handed over for the input under way. */
+/** What a pane button does, as the key or command it stands for. */
+export function buttonAction(s: VimState, act: string, layout: Layout): StepResult {
+  const command = (cmd: string) => submitInput({ ...s, mode: 'input', inputKind: 'command', draft: cmd, caret: undefined }, cmd, layout)
+  switch (act) {
+    case 'send':
+      return command('s')
+    case 'fill':
+      return command('p')
+    case 'close':
+      return command('q')
+    case 'save':
+      return submitInput(s, s.draft, layout)
+    case 'cancel':
+      return { state: escape(s) }
+    default:
+      return { state: s }
+  }
+}
+
 export function submitInput(s: VimState, text: string, layout: Layout): StepResult {
   if (s.mode !== 'input') return { state: s }
   if (s.inputKind === 'comment') return { state: saveComment(s, text) }

@@ -37,6 +37,7 @@ const draft = atom({ plugin: 'reply-comments', key: 'draft' } as const, EMPTY)
 const relay = atom({ plugin: 'reply-comments', key: 'relay' } as const, [] as ReplyCommentsRelayed[])
 const view = atom({ plugin: 'reply-comments', key: 'view' } as const, NORMAL)
 const legend = atom({ plugin: 'reply-comments', key: 'legend' } as const, false)
+const mouse = atom({ plugin: 'reply-comments', key: 'mouse' } as const, false)
 const keysDrawn = atom({ plugin: 'reply-comments', key: 'keysDrawn' } as const, MARKS[0]!)
 const fieldMark = atom({ plugin: 'reply-comments', key: 'fieldMark' } as const, MARKS[0]!)
 const fieldRows = atom({ plugin: 'reply-comments', key: 'fieldRows' } as const, 1)
@@ -196,6 +197,37 @@ async function moveWindow($: EngineInterface, cursor: number) {
   await update($, draft, cur => ({ ...cur, rev: cur.rev + 1 }))
 }
 
+/**
+ * The buttons a mouse user gets, for the reader's state: every basic action
+ * without a key to learn. Each sends what its key would.
+ */
+/** Buttons after which the pane is gone or the prompt box is the point. */
+const LEAVES_PANE = new Set(['send', 'fill', 'close'])
+
+function mouseButtons(v: ReplyCommentsView): { key: string; label: string; keys: () => RelayKey[] }[] {
+  if (v.mode === 'input') {
+    // read at the press: the field's text changes without a redraw
+    const save = (): RelayKey[] => (isTypingInPane(v) ? [{ key: 'submit', text: fieldText }] : [{ key: 'button', text: 'save' }])
+    return [
+      { key: 'save', label: v.inputKind === 'comment' || v.inputKind === undefined ? 'Save' : 'OK', keys: save },
+      { key: 'cancel', label: 'Cancel', keys: () => [{ key: 'button', text: 'cancel' }] },
+    ]
+  }
+  const onComment = v.mode === 'normal' && v.onComment
+  return [
+    ...(onComment
+      ? [
+          { key: 'revise', label: 'Revise', keys: () => [{ key: 'r' }] },
+          { key: 'delete', label: 'Delete', keys: () => [{ key: 'x' }] },
+        ]
+      : []),
+    { key: 'overall', label: 'Overall comment', keys: () => [{ key: 'escape' }, { key: 'o' }] },
+    { key: 'send', label: 'Send', keys: () => [{ key: 'button', text: 'send' }] },
+    { key: 'fill', label: 'To prompt', keys: () => [{ key: 'button', text: 'fill' }] },
+    { key: 'close', label: 'Close', keys: () => [{ key: 'button', text: 'close' }] },
+  ]
+}
+
 const isTypingInPane = (v: ReplyCommentsView) => v.mode === 'input' && v.via === 'pane'
 
 /** Which field the pane draws for a view in input mode. */
@@ -336,6 +368,8 @@ const submitOf = (v: ReplyCommentsView) => (v.inputKind === 'comment' ? 'save' :
 
 // The pane body's size, as last drawn, for sizing the field as it is typed in.
 let bodyColumns = 80
+// What the pane's field holds now, for the Save button.
+let fieldText = ''
 let bodyRows = 20
 
 const FIELD_LABEL = {
@@ -435,6 +469,7 @@ export const register: Register = on => {
     if (!same(d.comments, comments) || d.overall !== post.overall) {
       await update($, draft, cur => ({ ...cur, comments, overall: post.overall }))
     }
+    if (post.view.mouse && !(await read($, mouse))) await update($, mouse, () => true)
     const was = await read($, view)
     if (!same(was, post.view)) {
       await update($, view, () => post.view)
@@ -443,6 +478,7 @@ export const register: Register = on => {
         // left in it, and its cursor at the end of the text it starts with.
         const mark = MARKS[(MARKS.indexOf(await read($, fieldMark)) + 1) % MARKS.length]!
         await update($, fieldMark, () => mark)
+        fieldText = post.view.draft
         await update($, fieldRows, () => rowsFor(FIELD_LABEL[fieldKindOf(post.view)], submitOf(post.view), post.view.draft, bodyColumns))
         void $.ui.focus({ requestId: PANE, key: fieldKey(mark) }).catch(() => undefined)
       } else if (!isTypingInPane(post.view) && isTypingInPane(was)) {
@@ -482,7 +518,9 @@ export const register: Register = on => {
       bodyRows = e.props.scroll.bodyRows
       const fieldKind = fieldKindOf(v)
       const fieldHeight = isTypingInPane(v) ? await read($, fieldRows) : 1
-      const readerRows = Math.max(3, e.props.scroll.bodyRows - legendRows.length - fieldHeight)
+      const isMouse = await read($, mouse)
+      const buttonRows = isMouse ? 1 : 0
+      const readerRows = Math.max(3, e.props.scroll.bodyRows - legendRows.length - fieldHeight - buttonRows)
 
       return (
         <Box flexDirection="column">
@@ -498,6 +536,23 @@ export const register: Register = on => {
               <Button key={'ctrl-' + key} label={'^' + key.toUpperCase()} plain action={action} onPress={() => relayKeys($, [{ key, ctrl: true }])} />
             ))}
           </Box>
+          {isMouse ? (
+            <Box flexDirection="row" height={1} overflow="hidden" columnGap={1}>
+              {mouseButtons(v).map(b => (
+                <Button
+                  key={'mouse-' + b.key}
+                  label={b.label}
+                  onPress={async () => {
+                    await relayKeys($, b.keys())
+                    // A pressed button hands the keyboard to the prompt box; take it
+                    // back, so typing goes to the pane (a new field takes it there).
+                    if (!LEAVES_PANE.has(b.key)) void $.ui.open({ ...PANE_OPTIONS, focus: true }).catch(() => undefined)
+                  }}
+                />
+              ))}
+              {v.mode === 'normal' && !v.onComment ? <Text dimColor wrap="truncate-end">drag over text to comment · click a comment to change it</Text> : null}
+            </Box>
+          ) : null}
           {legendRows.map(row => (
             <Box flexDirection="row" height={1} overflow="hidden">
               <Text bold>{row.group.padEnd(GROUP_COLUMN)}</Text>
@@ -518,6 +573,7 @@ export const register: Register = on => {
                   submitLabel={submitOf(v)}
                   autoFocus
                   onInput={text => {
+                    fieldText = unmarked(text)
                     const rows = rowsFor(FIELD_LABEL[fieldKind], submitOf(v), unmarked(text), bodyColumns)
                     void read($, fieldRows).then(was => (was === rows ? undefined : update($, fieldRows, () => rows)))
                   }}

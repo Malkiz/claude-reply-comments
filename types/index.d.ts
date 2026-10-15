@@ -72,6 +72,10 @@ export type ReplyCommentsView = {
   draft: string
   /** Keys typed toward a command not yet complete (`g`, `ci`, `3`). */
   pending: string
+  /** The person has clicked or dragged in the reader: the pane shows its buttons. */
+  mouse?: true
+  /** In normal mode, the cursor is on a comment: Revise and Delete apply. */
+  onComment?: true
 }
 
 declare module 'claude-code' {
@@ -83,6 +87,8 @@ declare module 'claude-code' {
       view: ReplyCommentsView
       /** Whether the key legend is shown. */
       legend: boolean
+      /** Once the person uses the mouse in the reader, the pane shows buttons for every basic action. */
+      mouse: boolean
       /** What the key field holds as drawn: '' or a zero-width space, alternating so each draw clears it. */
       keysDrawn: string
       /** The zero-width mark the field (comment, search, command) starts with, new for each input. */
