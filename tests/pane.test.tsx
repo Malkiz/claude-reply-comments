@@ -114,6 +114,12 @@ async function keys(ui: Ui, typed: string) {
   }
 }
 
+/** `:s` from the key field: sends. */
+async function sendKeys(ui: Ui) {
+  await keys(ui, ':')
+  await field(ui, 's')
+}
+
 /** The pane's field (comment, search or command), whichever of its keys is drawn now. */
 async function findField(ui: Ui) {
   for (const key of ['field0', 'field1', 'field2', 'field3']) {
@@ -384,7 +390,7 @@ describe('annotate', () => {
     await keys(ui, 'gg')
     expect(await status(ui, '· 1/')).toBeDefined()
 
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted).toEqual([
       'I left a comment on part of your last reply:\n\n1. On this part:\n> First paragraph about the plan.\n\ntoo vague',
     ])
@@ -436,7 +442,7 @@ describe('annotate', () => {
     expect(second.key).not.toBe(first.key)
     expect(fieldText(second)).toBe('')
     await field(ui, `${second.text}kept`)
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted[0]).toContain('\n\nkept')
     await ui.unmount()
   })
@@ -452,7 +458,7 @@ describe('annotate', () => {
     await ui.input({ key: revising.key, text: `${revising.text} CHANGED`, kind: 'change' })
     await ui.key({ key: 'c', ctrl: true, in: 'reader' })
     expect(await status(ui, 'Cancelled')).toBeDefined()
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted[0]).toContain('\n\noriginal')
     expect(sent.submitted[0]).not.toContain('CHANGED')
     await ui.unmount()
@@ -516,10 +522,33 @@ describe('annotate', () => {
     const sent = engine(on)
     const { ui } = await openPane($)
     for (const key of ['v', 'e', 'c', 'n', 'o', 'p', 'e']) await ui.key({ key, in: 'reader' })
-    expect(await status(ui, '> nope█')).toBeDefined()
+    expect(await status(ui, '> nope')).toBeDefined()
     await ui.key({ key: 'return', in: 'reader' })
-    await ui.key({ key: 's', in: 'reader' })
+    for (const key of [':', 's', 'return']) await ui.key({ key, in: 'reader' })
     expect(sent.submitted[0]).toContain('> First\n\nnope')
+    await ui.unmount()
+  })
+
+  test('typing in place: arrows move the caret, text goes in there, a click on the draft moves it', async ($, on) => {
+    const sent = engine(on)
+    const { ui } = await openPane($)
+    // an overall comment typed in the reader, as after a click
+    await ui.key({ key: 'o', in: 'reader' })
+    for (const key of ['h', 'e', 'l', 'l', 'o', 'space', 'w', 'o', 'r', 'l', 'd']) await ui.key({ key, in: 'reader' })
+    for (let i = 0; i < 5; i++) await ui.key({ key: 'left', in: 'reader' })
+    await ui.key({ key: 'X', in: 'reader' })
+    expect(await status(ui, '> hello X')).toBeDefined()
+    await ui.key({ key: 'backspace', in: 'reader' })
+    await ui.key({ key: 'end', in: 'reader' })
+    await ui.key({ key: '!', in: 'reader' })
+    // a click on the draft: the status row is the reader's last; " COMMENT " and a gap, "> ", then the text
+    const row = 11 - 1
+    await ui.pointer({ type: 'down', x: 9 + 1 + 2 + 1, y: row, button: 'left', in: 'reader' })
+    await ui.pointer({ type: 'up', x: 9 + 1 + 2 + 1, y: row, button: 'left', in: 'reader' })
+    await ui.key({ key: 'Y', in: 'reader' })
+    await ui.key({ key: 'return', in: 'reader' })
+    for (const key of [':', 's', 'return']) await ui.key({ key, in: 'reader' })
+    expect(sent.submitted[0]).toContain('hYello world!')
     await ui.unmount()
   })
 
@@ -536,7 +565,7 @@ describe('annotate', () => {
     expect(await status(ui, 'COMMENT')).toBeDefined()
     for (const key of ['o', 'k']) await ui.key({ key, in: 'reader' })
     await ui.key({ key: 'return', in: 'reader' })
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted[0]).toContain('> paragraph\n\nok')
     await ui.unmount()
   })
@@ -565,7 +594,7 @@ describe('annotate', () => {
     await ui.pointer({ type: 'down', x: 5, y: 6, button: 'left', in: 'reader' })
     await ui.pointer({ type: 'up', x: 5, y: 6, button: 'left', in: 'reader' })
     expect(await status(ui, 'COMMENT')).toBeUndefined()
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted).toHaveLength(1)
     expect(sent.submitted[0]).toContain('> Second\n\nok')
     expect(sent.submitted[0]).not.toContain('> paragraph')
@@ -596,7 +625,7 @@ describe('annotate', () => {
     await keys(ui, 'ggvip')
     await keys(ui, 'c')
     await field(ui, 'about my ask')
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(sent.submitted).toEqual([
       'I left a comment on part of our conversation:\n\n1. On this part of my message "old prompt":\n> old prompt\n\nabout my ask',
     ])
@@ -606,7 +635,7 @@ describe('annotate', () => {
   test('nothing to send stays put', async ($, on) => {
     const sent = engine(on)
     const { ui } = await openPane($)
-    await keys(ui, 's')
+    await sendKeys(ui)
     expect(await status(ui, 'Nothing to send yet')).toBeDefined()
     expect(sent.submitted).toHaveLength(0)
     await ui.unmount()

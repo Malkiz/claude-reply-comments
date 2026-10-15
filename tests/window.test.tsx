@@ -57,7 +57,8 @@ describe('a long conversation', () => {
     expect(await ui.find({ in: 'reader', text: /reply 119/ })).toBeDefined()
     expect(await ui.find({ in: 'reader', text: '1 comment' })).toBeDefined()
 
-    await keys('s')
+    await keys(':')
+    for (const key of ['field0', 'field1', 'field2', 'field3']) if (await ui.find({ key })) await ui.input({ key, text: 's' })
     expect(submitted).toHaveLength(1)
     expect(submitted[0]).toContain('On this part of my message "prompt 0 word')
     expect(submitted[0]).toContain('> prompt 0 word word')

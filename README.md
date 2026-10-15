@@ -15,7 +15,7 @@ The conversation is a workspace you share with Claude, but two things in it are 
 
 | You want to… | Without it | With `/annotate` |
 | --- | --- | --- |
-| answer several points or questions in one reply | Copy or restate each one in the prompt and write under it | Select each one, comment, press `s` |
+| answer several points or questions in one reply | Copy or restate each one in the prompt and write under it | Select each one, comment, type `:s` |
 | answer something Claude said a while ago | Scroll the transcript, copy, paste | Jump there (`]m`, `/`, `gg`), select, comment |
 | revise a plan before Claude starts | Describe the step you mean in words | Comment on the step itself |
 | keep annotating while Claude works | Wait for the turn to end, or copy passages out as they appear | Open `/annotate` mid-turn and comment while new text keeps arriving |
@@ -52,7 +52,7 @@ For `ctrl-e` `ctrl-y` `ctrl-u` `ctrl-f` without clicking the pane first, add thi
 2. Move with vim keys, or the mouse wheel.
 3. Select a span (`v`, `V`, a text object such as `ip`, or a mouse drag) and press `c`. Type the comment, then Enter.
 4. Repeat. `o` adds an overall comment.
-5. Press `s` to send everything, or `:p` to put the prompt in the prompt box so you can edit it first.
+5. Type `:s` to send everything, or `:p` to put the prompt in the prompt box so you can edit it first.
 
 `?` shows or hides the full key list at the bottom of the pane.
 
@@ -60,9 +60,9 @@ For `ctrl-e` `ctrl-y` `ctrl-u` `ctrl-f` without clicking the pane first, add thi
 | --- | --- |
 | Move | `h j k l` · `w b e ge` (`W B E gE`) · `0 ^ $` · `gg G` (`5G` goes to line 5) · `{ }` · `]m [m` next / previous message · `H M L` · `f t F T ; ,` · counts (`3j`, `2w`) · `ctrl-e ctrl-y ctrl-u ctrl-f` (see [Install](#install)) |
 | Select | `v` · `V` · `o` swaps ends · text objects `iw aw iW aW is as ip ap i( a( i[ i{ i< i" i' i\``… |
-| Comment | `c` on a selection · `c{motion}` comments that span: `cip ciw ci( cc c$ c2e`… · `o` overall comment · `r` revise / `x` delete the comment under the cursor · `]c [c` next / previous comment |
+| Comment | `c` on a selection · `c{motion}` comments that span: `cip ciw ci( cc c$ c2e`… · `C` comments to the end of the line · `o` overall comment · `r` revise / `x` delete the comment under the cursor · `]c [c` next / previous comment |
 | Search | `/text` then Enter (smartcase) · `n N` |
-| Finish | `s` or `:w` send · `:p` put the prompt in the prompt box · `:clear` · `q` / `:q` close (the draft is kept) · `:12` go to line 12 · `zz zt zb` scroll |
+| Finish | `:s` or `:w` send · `:p` put the prompt in the prompt box · `:clear` · `q` / `:q` close (the draft is kept) · `:12` go to line 12 · `zz zt zb` scroll |
 
 More:
 
@@ -77,8 +77,8 @@ More:
 ## What it reads and runs
 
 - **Reads:** the conversation, through the hooks API (`$.session.messages()`), when you run `/annotate` and as new rows are stored while the pane is open.
-- **Writes:** nothing to the conversation except the prompt you send with `s`, or the text it puts in the prompt box with `:p`. Its hook on new rows (`session.append`) passes every row through unchanged.
-- **The prompt it sends** (`$.prompt.submit`, only when you press `s` or type `:w`) contains exactly: an opening line ("I left N comments on parts of …"), then for each comment the text you selected, quoted, with the comment you typed under it and which message it's on, then your overall comment if you wrote one. Nothing else from the conversation goes into it. It goes to Claude in this session, like a prompt you type; the mod sends nothing anywhere else.
+- **Writes:** nothing to the conversation except the prompt you send with `:s`, or the text it puts in the prompt box with `:p`. Its hook on new rows (`session.append`) passes every row through unchanged.
+- **The prompt it sends** (`$.prompt.submit`, only when you type `:s` or `:w`) contains exactly: an opening line ("I left N comments on parts of …"), then for each comment the text you selected, quoted, with the comment you typed under it and which message it's on, then your overall comment if you wrote one. Nothing else from the conversation goes into it. It goes to Claude in this session, like a prompt you type; the mod sends nothing anywhere else.
 - **Commands:** it registers `/annotate` and answers it by opening the pane. It doesn't run slash commands. (The tests in `tests/` run `/annotate` inside Claude Code's test kit; they aren't part of the mod at runtime.)
 - **Escape key:** Esc in the pane arrives as a request to close it, which the mod refuses so that Esc can leave visual mode or cancel a field; `q` closes the pane. It touches no permission prompt or setting.
 - **Hooks**, each limited to the mod's own command and pane:

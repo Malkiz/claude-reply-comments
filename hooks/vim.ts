@@ -46,6 +46,8 @@ export type VimState = {
   want: number
   target?: Target
   draft: string
+  /** Where typing in place goes in the draft, in characters; absent is the end. */
+  caret?: number
   /** Keys typed toward a command not yet complete (`g`, `ci`, `3`). */
   pending: string
   lastFind?: { cmd: FindCommand; ch: string }
@@ -251,12 +253,12 @@ function motionRange(s: VimState, m: Motion): Range {
 function startComment(s: VimState, range: Range, via: Via): VimState {
   const r = trimRange(s.reply, range.start, range.end)
   if (r.end <= r.start) return { ...s, mode: 'normal', pending: '', flash: 'Nothing to comment on there' }
-  return { ...s, mode: 'input', inputKind: 'comment', via, target: r, draft: '', pending: '', cursor: r.start, want: -1 }
+  return { ...s, mode: 'input', inputKind: 'comment', via, target: r, draft: '', caret: undefined, pending: '', cursor: r.start, want: -1 }
 }
 
 function saveComment(s: VimState, text: string): VimState {
   const body = text.trim()
-  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, target: undefined, draft: '' }
+  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, target: undefined, draft: '', caret: undefined }
   const target = s.target
   if (!target) return base
   if ('overall' in target) {
@@ -276,12 +278,13 @@ function saveComment(s: VimState, text: string): VimState {
 
 function runCommand(s: VimState, text: string, layout: Layout): StepResult {
   const cmd = text.trim()
-  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, draft: '' }
+  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, draft: '', caret: undefined }
   const hasAny = s.comments.length > 0 || (s.elsewhere ?? 0) > 0 || s.overall.trim() !== ''
   if (/^\d+$/.test(cmd)) return { state: scrolled({ ...base, cursor: firstNonBlank(s.reply, nthLine(s.reply, Number(cmd))) }, layout) }
   switch (cmd) {
     case '':
       return { state: base }
+    case 's':
     case 'w':
     case 'wq':
     case 'x':
@@ -310,7 +313,7 @@ export function submitInput(s: VimState, text: string, layout: Layout): StepResu
   if (s.inputKind === 'comment') return { state: saveComment(s, text) }
   if (s.inputKind === 'command') return runCommand(s, text, layout)
   const pattern = text || s.search
-  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, draft: '', search: pattern }
+  const base: VimState = { ...s, mode: 'normal', inputKind: undefined, draft: '', caret: undefined, search: pattern }
   const at = pattern ? searchFrom(s.reply, s.cursor, pattern, 1) : undefined
   if (at === undefined) return { state: { ...base, flash: pattern ? `Not found: ${pattern}` : '' } }
   return { state: scrolled({ ...base, cursor: at, want: -1 }, layout) }
@@ -320,7 +323,7 @@ export function submitInput(s: VimState, text: string, layout: Layout): StepResu
 
 /** Escape: leaves an input, a selection or a half-typed command. In plain normal mode it does nothing. */
 export function escape(s: VimState): VimState {
-  if (s.mode === 'input') return { ...s, mode: 'normal', inputKind: undefined, target: undefined, draft: '', pending: '', flash: 'Cancelled' }
+  if (s.mode === 'input') return { ...s, mode: 'normal', inputKind: undefined, target: undefined, draft: '', caret: undefined, pending: '', flash: 'Cancelled' }
   if (s.mode === 'visual' || s.mode === 'vline') return { ...s, mode: 'normal', pending: '' }
   return s.pending ? { ...s, pending: '' } : s
 }
@@ -333,17 +336,42 @@ const NAMED: Record<string, string> = {
 /** Keys the surface names rather than types; typed text, even a pasted word, is anything else. */
 const NAMED_KEYS = new Set(['up', 'down', 'left', 'right', 'tab', 'escape', 'pageup', 'pagedown', 'home', 'end', 'insert', 'delete', 'backspace', 'return', 'enter', 'space'])
 
+/** The caret of a draft typed in place: a character index, the end when unset. */
+export const caretOf = (s: Pick<VimState, 'draft' | 'caret'>) => {
+  const length = [...s.draft].length
+  return s.caret === undefined ? length : Math.max(0, Math.min(length, s.caret))
+}
+
 function typeInPlace(s: VimState, ev: KeyIn, layout: Layout): StepResult {
   const { key } = ev
-  if (ev.ctrl && key === 'u') return { state: { ...s, draft: '' } }
+  const chars = [...s.draft]
+  const at = caretOf(s)
+  const edit = (next: string[], caret: number) => ({ state: { ...s, draft: next.join(''), caret } })
+  const move = (caret: number) => ({ state: { ...s, caret: Math.max(0, Math.min(chars.length, caret)) } })
   if (key === 'return' || key === 'enter') return submitInput(s, s.draft, layout)
-  if (key === 'backspace' || key === 'delete') {
-    if (!s.draft) return { state: escape(s) }
-    return { state: { ...s, draft: [...s.draft].slice(0, -1).join('') } }
+  if (ev.ctrl) {
+    if (key === 'u') return edit([], 0)
+    if (key === 'a') return move(0)
+    if (key === 'e') return move(chars.length)
+    return { state: s }
   }
-  if (key === 'space') return { state: { ...s, draft: `${s.draft} ` } }
-  if (ev.ctrl || ev.meta || NAMED_KEYS.has(key)) return { state: s }
-  return { state: { ...s, draft: s.draft + key.replace(/[\r\n\t]+/g, ' ') } }
+  if (key === 'backspace') {
+    if (chars.length === 0) return { state: escape(s) }
+    if (at === 0) return { state: s }
+    return edit([...chars.slice(0, at - 1), ...chars.slice(at)], at - 1)
+  }
+  if (key === 'delete') {
+    if (chars.length === 0) return { state: escape(s) }
+    return edit([...chars.slice(0, at), ...chars.slice(at + 1)], at)
+  }
+  if (key === 'left') return move(at - 1)
+  if (key === 'right') return move(at + 1)
+  if (key === 'home') return move(0)
+  if (key === 'end') return move(chars.length)
+  const typed = key === 'space' ? ' ' : ev.meta || NAMED_KEYS.has(key) ? '' : key.replace(/[\r\n\t]+/g, ' ')
+  if (!typed) return { state: s }
+  const added = [...typed]
+  return edit([...chars.slice(0, at), ...added, ...chars.slice(at)], at + added.length)
 }
 
 function ctrlKey(s: VimState, key: string, layout: Layout): StepResult {
@@ -394,6 +422,13 @@ export function step(prev: VimState, ev: KeyIn, via: Via, layout: Layout): StepR
   const isVisual = s.mode === 'visual' || s.mode === 'vline'
   const wait = { state: { ...s, pending: seq } }
   const drop = (flash?: string) => ({ state: flash ? { ...s, pending: '', flash } : { ...s, pending: '' } })
+
+  // C: comment from the cursor to the end of the line ([count] lines), as c$
+  if (!isVisual && rest === 'C') {
+    let le = lineEnd(s.reply, s.cursor)
+    for (let k = 1; k < (count ?? 1); k++) le = lineEnd(s.reply, Math.min(s.reply.length, le + 1))
+    return le > s.cursor ? { state: startComment(s, { start: s.cursor, end: le }, via) } : drop('Nothing to the end of the line')
+  }
 
   // c{motion}, cc, c{text object}: comment on that span
   if (!isVisual && rest[0] === 'c') {
@@ -485,19 +520,17 @@ function command(s0: VimState, key: string, via: Via, layout: Layout): StepResul
       return { state: scrolled({ ...s, cursor: firstNonBlank(s.reply, m.to), want: -1 }, layout) }
     }
     case 'o':
-      return { state: { ...s, mode: 'input', inputKind: 'comment', via, target: { overall: true }, draft: s.overall } }
+      return { state: { ...s, mode: 'input', inputKind: 'comment', via, target: { overall: true }, draft: s.overall, caret: undefined } }
     case 'r':
       if (here < 0) return { state: { ...s, flash: 'No comment under the cursor' } }
-      return { state: { ...s, mode: 'input', inputKind: 'comment', via, target: { edit: here }, draft: s.comments[here]!.text } }
+      return { state: { ...s, mode: 'input', inputKind: 'comment', via, target: { edit: here }, draft: s.comments[here]!.text, caret: undefined } }
     case 'x':
       if (here < 0) return { state: { ...s, flash: 'No comment under the cursor' } }
       return { state: { ...s, comments: s.comments.filter((_, i) => i !== here), flash: 'Comment removed' } }
     case '/':
-      return { state: { ...s, mode: 'input', inputKind: 'search', via, draft: '' } }
+      return { state: { ...s, mode: 'input', inputKind: 'search', via, draft: '', caret: undefined } }
     case ':':
-      return { state: { ...s, mode: 'input', inputKind: 'command', via, draft: '' } }
-    case 's':
-      return hasAny ? { state: s, action: 'send' } : { state: { ...s, flash: 'Nothing to send yet' } }
+      return { state: { ...s, mode: 'input', inputKind: 'command', via, draft: '', caret: undefined } }
     case 'q':
       return { state: s, action: 'close' }
     default:

@@ -3,7 +3,7 @@ import type { ClientModule, ClientPointerEvent, ClientSurface } from 'claude-cod
 import type { ReplyComment, ReplyCommentsMark, ReplyCommentsPart, ReplyCommentsRelayed, ReplyCommentsView } from '../types'
 import { commentAt, lastClaudePart, lineOf, offsetAt, searchMatches, selectionRange, wrap } from './lib'
 import type { Line } from './lib'
-import { escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
+import { caretOf, escape, initialState, scrollBy, scrolled, selection, step, submitInput, viewOf } from './vim'
 import type { Action, Layout, StepResult, VimState } from './vim'
 
 /** What the hooks module hands the reader. */
@@ -215,6 +215,12 @@ export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderStat
   if (event.button !== undefined && event.button !== 'left') return s
   // A press while a comment (or a search or command) is open drops it, as Esc
   // does: a click just leaves it, a drag selects a new span to comment on.
+  // a click on a draft typed in place puts the caret there
+  if (s.mode === 'input' && s.via === 'reader' && event.type === 'down' && event.y === layout.rows) {
+    const shown = draftView(s, layout.columns + GUTTER)
+    const col = event.x - shown.textStart
+    return col < 0 ? s : { ...s, caret: Math.min([...s.draft].length, shown.start + col) }
+  }
   if (s.mode === 'input') {
     if (event.type !== 'down' || event.y >= layout.rows) return s
     s = { ...s, ...escape(s) }
@@ -238,7 +244,7 @@ export function onPointer(s: ReaderState, event: ClientPointerEvent): ReaderStat
     if (pos === s.anchor) return { ...done, mode: 'normal' }
     const r = selectionRange(s.reply, s.anchor, pos, false)
     if (r.end <= r.start) return { ...done, mode: 'normal' }
-    return { ...done, mode: 'input', inputKind: 'comment', via: 'reader', target: r, draft: '', cursor: r.start }
+    return { ...done, mode: 'input', inputKind: 'comment', via: 'reader', target: r, draft: '', caret: undefined, cursor: r.start }
   }
   return s
 }
@@ -365,25 +371,47 @@ const MODE_LABEL: Record<VimState['mode'], string> = {
   input: 'INPUT',
 }
 
+const labelOf = (s: ReaderState) =>
+  s.mode !== 'input' ? MODE_LABEL[s.mode] : s.inputKind === 'comment' ? 'COMMENT' : s.inputKind === 'search' ? 'SEARCH' : 'COMMAND'
+const prefixOf = (s: ReaderState) => (s.inputKind === 'search' ? '/' : s.inputKind === 'command' ? ':' : '> ')
+
+/**
+ * The draft typed in place as the status row shows it in `width` columns:
+ * the window of it kept around the caret, with '…' when its start is cut,
+ * and the column its first shown character sits at.
+ */
+export function draftView(s: ReaderState, width: number) {
+  const chars = [...printable(s.draft)]
+  const caret = caretOf(s)
+  // the label (' COMMENT '), a gap, then the prefix
+  const head = labelOf(s).length + 3 + prefixOf(s).length
+  const room = Math.max(4, width - head)
+  let start = 0
+  if (chars.length + 1 > room) start = Math.max(0, Math.min(caret - room + 2, chars.length + 2 - room))
+  const lead = start > 0 ? '…' : ''
+  const visible = chars.slice(start, start + room - lead.length)
+  const at = caret - start
+  return {
+    start,
+    textStart: head + lead.length,
+    lead,
+    before: visible.slice(0, at).join(''),
+    at: visible[at] ?? ' ',
+    after: visible.slice(at + 1).join(''),
+  }
+}
+
 function statusRow(surface: ClientSurface<ReaderState>, s: ReaderState, lines: readonly Line[], top: number, rows: number, elsewhere: number) {
   const { Box, Text } = surface.elements
-  const label =
-    s.mode !== 'input'
-      ? MODE_LABEL[s.mode]
-      : s.inputKind === 'comment'
-        ? 'COMMENT'
-        : s.inputKind === 'search'
-          ? 'SEARCH'
-          : 'COMMAND'
+  const label = labelOf(s)
   const total = s.comments.length + elsewhere
   const count = `${total} comment${total === 1 ? '' : 's'}${s.overall.trim() ? ' + overall' : ''}`
   const where = `${lineOf(lines, s.cursor) + 1}/${lines.length}${top + rows < lines.length ? ' ↓' : ''}`
-  const prefix = s.inputKind === 'search' ? '/' : s.inputKind === 'command' ? ':' : '> '
 
   let info = ''
   let color: string | undefined
   if (s.mode === 'input') {
-    info = s.via === 'pane' ? 'type below · Enter finishes · Esc cancels' : `${prefix}${printable(s.draft)}█`
+    info = s.via === 'pane' ? 'type below · Enter finishes · Esc cancels' : ''
   } else if (s.flash) {
     info = s.flash
     color = 'green'
@@ -399,11 +427,24 @@ function statusRow(surface: ClientSurface<ReaderState>, s: ReaderState, lines: r
   return (
     <Box flexDirection="row" height={1} overflow="hidden" gap={1}>
       <Text bold inverse>{` ${label} `}</Text>
-      <Box flexGrow={1} flexShrink={1} overflow="hidden">
-        <Text color={color} dimColor={!color && s.mode === 'input' && s.via === 'pane'} wrap="truncate-end">
-          {info || ' '}
-        </Text>
-      </Box>
+      {s.mode === 'input' && s.via === 'reader' ? (
+        (() => {
+          const d = draftView(s, surface.columns > 0 ? surface.columns : 80)
+          return (
+            <Box flexDirection="row" flexGrow={1} flexShrink={1} overflow="hidden">
+              <Text>{prefixOf(s) + d.lead + d.before}</Text>
+              <Text inverse>{d.at}</Text>
+              <Text wrap="truncate-end">{d.after}</Text>
+            </Box>
+          )
+        })()
+      ) : (
+        <Box flexGrow={1} flexShrink={1} overflow="hidden">
+          <Text color={color} dimColor={!color && s.mode === 'input' && s.via === 'pane'} wrap="truncate-end">
+            {info || ' '}
+          </Text>
+        </Box>
+      )}
       {right ? <Text dimColor>{right}</Text> : null}
     </Box>
   )

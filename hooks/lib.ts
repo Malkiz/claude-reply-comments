@@ -693,9 +693,9 @@ export function buildPrompt(
 export const LEGEND: readonly { group: string; text: string }[] = [
   { group: 'Move', text: 'h j k l · w b e ge (W B E gE) · 0 ^ $ · gg G · { } · H M L · f t F T ; , · ]m [m next/prev message · counts (3j) · ctrl-e/y/u/f: README' },
   { group: 'Select', text: 'v V · o other end · text objects iw aw is ip ap i( a( i" a" … · Esc cancels' },
-  { group: 'Comment', text: 'c on a selection · c{motion}: cip ciw cc c$ · o overall · r revise · x delete · ]c [c next/prev' },
+  { group: 'Comment', text: 'c on a selection · c{motion}: cip ciw cc c$ C · o overall · r revise · x delete · ]c [c next/prev' },
   { group: 'Search', text: '/text then Enter · n N' },
-  { group: 'Finish', text: 's send · :p to prompt · :clear · q close · zz zt zb scroll · ? hide keys' },
+  { group: 'Finish', text: ':s send · :p to prompt · :clear · q close · zz zt zb scroll · ? hide keys' },
 ]
 
 /** The group-name column, its gap included. */

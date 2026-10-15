@@ -237,9 +237,10 @@ describe('comments, search and commands', () => {
     expect(submitInput(run(start(t), '/').s, 'BETA', LAYOUT).state.flash).toBe('Not found: BETA')
   })
 
-  test(': commands and ? and s and q', () => {
+  test(': commands and ? and q; s alone sends nothing', () => {
     const withComment = submitInput(run(start(t), 'ciw').s, 'x', LAYOUT).state
     const cmd = (s: VimState, text: string) => submitInput(run(s, ':').s, text, LAYOUT)
+    expect(cmd(withComment, 's').action).toBe('send')
     expect(cmd(withComment, 'w').action).toBe('send')
     expect(cmd(withComment, 'p').action).toBe('fill')
     expect(cmd(withComment, 'q').action).toBe('close')
@@ -248,8 +249,17 @@ describe('comments, search and commands', () => {
     expect(cmd(withComment, 'nope').state.flash).toBe('Not a command: :nope')
     expect(cmd(start(t), 'w').state.flash).toBe('Nothing to send yet')
     expect(run(withComment, '?').actions).toEqual(['legend'])
-    expect(run(withComment, 's').actions).toEqual(['send'])
+    expect(run(withComment, 's').actions).toEqual([])
     expect(run(withComment, 'q').actions).toEqual(['close'])
+  })
+
+  test('C comments from the cursor to the end of the line, as c$', () => {
+    const text = 'alpha beta gamma\nnext line'
+    const s = run(start(text), 'wC').s
+    expect(s.mode).toBe('input')
+    expect(s.target).toEqual({ start: 6, end: 16 })
+    // 2C takes the next line too
+    expect(run(start(text), 'w2C').s.target).toEqual({ start: 6, end: text.length })
   })
 
   test('Esc cancels an input and keeps what was saved', () => {
